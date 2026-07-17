@@ -16,8 +16,10 @@ function getClipboard() {
 }
 
 function setClipboard(text) {
-  const escaped = text.replace(/'/g, "''");
-  execSync(`powershell.exe -Command "Set-Clipboard -Value '${escaped}'"`, {
+  // Encode the command as Base64 to safely handle quotes, $vars, backticks, newlines etc.
+  const ps = `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`;
+  const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+  execSync(`powershell.exe -EncodedCommand ${encoded}`, {
     windowsHide: true,
     timeout: 5000,
   });

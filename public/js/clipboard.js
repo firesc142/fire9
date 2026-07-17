@@ -1,5 +1,5 @@
 // Clipboard sync
-(function() {
+(function () {
   const clipboardText = document.getElementById('clipboard-text');
   const getBtn = document.getElementById('clipboard-get-btn');
   const sendBtn = document.getElementById('clipboard-send-btn');
@@ -34,10 +34,32 @@
 
   // Paste from local clipboard
   pasteLocalBtn.addEventListener('click', async () => {
+    // Primary: modern Clipboard API (requires HTTPS or localhost + focus)
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      try {
+        const text = await navigator.clipboard.readText();
+        clipboardText.value = text;
+        showNotification('Pasted from local clipboard', 'success');
+        return;
+      } catch (err) {
+        // Fall through to execCommand fallback
+      }
+    }
+    // Fallback: execCommand('paste') — works over HTTP and in older browsers
     try {
-      const text = await navigator.clipboard.readText();
-      clipboardText.value = text;
-      showNotification('Pasted from local clipboard', 'success');
+      const tmp = document.createElement('textarea');
+      tmp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+      document.body.appendChild(tmp);
+      tmp.focus();
+      const ok = document.execCommand('paste');
+      const text = tmp.value;
+      document.body.removeChild(tmp);
+      if (ok && text) {
+        clipboardText.value = text;
+        showNotification('Pasted from local clipboard', 'success');
+      } else {
+        showNotification('Clipboard access denied — grant permission or use HTTPS', 'error');
+      }
     } catch (err) {
       showNotification('Failed to read clipboard: ' + err.message, 'error');
     }

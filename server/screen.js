@@ -369,7 +369,9 @@ function handleConnection(socket) {
 
   socket.on('key-press', (data) => {
     try {
-      const vk = VK_MAP[data.key] || VK_MAP[data.key.toLowerCase()];
+      // Normalise the key: browser sends ' ' for Space, 'Space' is never sent
+      const keyName = data.key === ' ' ? 'Space' : data.key;
+      const vk = VK_MAP[keyName] || VK_MAP[keyName.toLowerCase()];
       if (!vk) return;
       const modifiers = (data.modifiers || []).map(m => MODIFIER_VK[m]).filter(Boolean);
       modifiers.forEach(m => sendKeyDown(m));
@@ -383,7 +385,8 @@ function handleConnection(socket) {
 
   socket.on('key-release', (data) => {
     try {
-      const vk = VK_MAP[data.key] || VK_MAP[data.key.toLowerCase()];
+      const keyName = data.key === ' ' ? 'Space' : data.key;
+      const vk = VK_MAP[keyName] || VK_MAP[keyName.toLowerCase()];
       if (vk) sendKeyUp(vk);
     } catch (err) {
       console.error('Key release error:', err.message);
