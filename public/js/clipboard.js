@@ -7,6 +7,13 @@
   const pasteLocalBtn = document.getElementById('clipboard-paste-local-btn');
   const autoSyncCheckbox = document.getElementById('clipboard-auto-sync');
 
+  // Auto-sync is always on — pre-check the box to reflect that
+  if (autoSyncCheckbox) {
+    autoSyncCheckbox.checked = true;
+    autoSyncCheckbox.disabled = true;
+    autoSyncCheckbox.title = 'Clipboard is always synced automatically';
+  }
+
   // Get remote clipboard
   getBtn.addEventListener('click', () => {
     socket.emit('clipboard-get');
@@ -65,20 +72,12 @@
     }
   });
 
-  // Auto-sync toggle
-  autoSyncCheckbox.addEventListener('change', () => {
-    if (autoSyncCheckbox.checked) {
-      socket.emit('clipboard-watch-start');
-      showNotification('Auto-sync enabled', 'info');
-    } else {
-      socket.emit('clipboard-watch-stop');
-      showNotification('Auto-sync disabled', 'info');
-    }
-  });
-
-  // Receive clipboard data from server
+  // Receive clipboard data from server (pushed automatically on any remote copy/cut)
   socket.on('clipboard-data', (data) => {
-    clipboardText.value = data.text;
+    // Only update if the textarea isn't focused (don't clobber user typing)
+    if (document.activeElement !== clipboardText) {
+      clipboardText.value = data.text;
+    }
   });
 
   // Clipboard operation status

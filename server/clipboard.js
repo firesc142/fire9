@@ -26,9 +26,27 @@ function setClipboard(text) {
 }
 
 function handleConnection(socket) {
+  // Start watching clipboard automatically as soon as client connects.
+  // Push any change to the frontend within ~1 second of it happening.
+  let lastContent = '';
+  try { lastContent = getClipboard(); } catch { /* ignore */ }
+
+  const autoInterval = setInterval(() => {
+    try {
+      const current = getClipboard();
+      if (current !== lastContent) {
+        lastContent = current;
+        socket.emit('clipboard-data', { text: current });
+      }
+    } catch { /* ignore polling errors */ }
+  }, 1000);
+
+  watchers.set(socket.id, autoInterval);
+
   socket.on('clipboard-get', () => {
     try {
       const text = getClipboard();
+      lastContent = text; // keep in sync so next poll doesn't re-fire
       socket.emit('clipboard-data', { text });
     } catch (err) {
       socket.emit('clipboard-error', { error: err.message });
@@ -38,39 +56,19 @@ function handleConnection(socket) {
   socket.on('clipboard-set', ({ text }) => {
     try {
       setClipboard(text || '');
+      lastContent = text || ''; // keep in sync so next poll doesn't echo back
       socket.emit('clipboard-status', { success: true });
     } catch (err) {
       socket.emit('clipboard-error', { error: err.message });
     }
   });
 
+  // Keep these events so existing UI checkbox still works (no-op since we auto-watch)
   socket.on('clipboard-watch-start', () => {
-    if (watchers.has(socket.id)) return;
-
-    let lastContent = getClipboard();
-
-    const interval = setInterval(() => {
-      try {
-        const current = getClipboard();
-        if (current !== lastContent) {
-          lastContent = current;
-          socket.emit('clipboard-data', { text: current });
-        }
-      } catch {
-        // ignore polling errors
-      }
-    }, 2000);
-
-    watchers.set(socket.id, interval);
     socket.emit('clipboard-watch-status', { active: true });
   });
 
   socket.on('clipboard-watch-stop', () => {
-    const interval = watchers.get(socket.id);
-    if (interval) {
-      clearInterval(interval);
-      watchers.delete(socket.id);
-    }
     socket.emit('clipboard-watch-status', { active: false });
   });
 
