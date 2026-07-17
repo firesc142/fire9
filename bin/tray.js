@@ -127,10 +127,8 @@ function stopServer() {
   if (fs.existsSync(PID_FILE)) {
     try {
       const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
-      try { process.kill(pid, 'SIGTERM'); } catch { }
-      setTimeout(() => {
-        try { process.kill(pid, 0); execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch { }
-      }, 3000);
+      // Force-kill the old process and wait for it to die before allowing a restart
+      try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch { }
     } catch { }
     try { fs.unlinkSync(PID_FILE); } catch { }
   }
@@ -146,7 +144,8 @@ const itemRefresh = {
   enabled: true,
   click() {
     stopServer();
-    setTimeout(() => startServer(), 1200);
+    // taskkill /F is synchronous — 500ms is enough for the port to be released
+    setTimeout(() => startServer(), 500);
   },
 };
 
