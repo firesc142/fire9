@@ -144,8 +144,17 @@
   const resizeObserver = new ResizeObserver(() => notifyViewportChange());
   resizeObserver.observe(canvas);
   window.addEventListener('resize', notifyViewportChange);
+
+  // Hide CRT corner brackets in fullscreen — toggle a class on the container
+  const screenContainer = canvas.parentElement;
   document.addEventListener('fullscreenchange', () => {
+    const isFullscreen = !!document.fullscreenElement;
+    screenContainer.classList.toggle('fullscreen-active', isFullscreen);
     setTimeout(notifyViewportChange, 100);
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
+    const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    screenContainer.classList.toggle('fullscreen-active', isFullscreen);
   });
   // §9.4 — mobile orientation change
   window.addEventListener('orientationchange', () => {

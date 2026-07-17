@@ -620,6 +620,17 @@ body {
   display: none;
 }
 
+/* JS-driven class (most reliable — works regardless of which element is fullscreen) */
+.screen-container.fullscreen-active::before,
+.screen-container.fullscreen-active::after {
+  display: none;
+}
+
+.screen-container.fullscreen-active .corner-tr,
+.screen-container.fullscreen-active .corner-bl {
+  display: none;
+}
+
 /* Top-right & bottom-left via box-shadow on a pseudo of the canvas */
 #screen-canvas {
   max-width: 100%;
