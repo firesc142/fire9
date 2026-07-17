@@ -6,29 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// ── Bootstrap: ensure Supabase env vars are in process.env before any module
-// loads supabase-config. The tray/CLI launcher injects them via spawn env, but
-// when the server is run directly (npm start / node server.js) we load .env here.
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-  try {
-    const dotenv = require('dotenv');
-    const candidates = [
-      path.join(os.homedir(), '.paperfly', '.env'),
-      path.join(__dirname, '..', '.env'),
-    ];
-    for (const p of candidates) {
-      if (fs.existsSync(p)) {
-        dotenv.config({ path: p, override: false });
-        if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) break;
-      }
-    }
-  } catch { /* dotenv not installed — credentials must come from spawn env */ }
-}
-
 const { getConfig, CONFIG_DIR } = require('./config');
 const { router: authRouter, requireAuth, socketAuthMiddleware } = require('./auth');
 const { startTunnel, stopTunnel, getTunnelUrl } = require('./tunnel');
-const { log, getLocalLogs, getMachineMetrics, pushMachineMetrics, CATEGORIES, LEVELS } = require('./supabase-logger');
+const { log, getLocalLogs, getMachineMetrics, CATEGORIES, LEVELS } = require('./supabase-logger');
 
 const config = getConfig();
 const PORT = config.port || 3000;
@@ -75,11 +56,6 @@ function validateApiKey(req, res, next) {
 app.get('/api/v1/dashboard/info', validateApiKey, (req, res) => {
   const config = getConfig();
   const metrics = getMachineMetrics();
-
-  // Push fresh metrics to Supabase on every request so the cloud dashboard
-  // always reflects the latest state without waiting for the 30-second interval.
-  pushMachineMetrics();
-
   res.json({
     success: true,
     data: {
@@ -127,10 +103,6 @@ app.get('/api/v1/dashboard/logs', validateApiKey, (req, res) => {
   const total = logs.length;
   const paginated = logs.slice(offset, offset + limit);
 
-  // Push metrics to Supabase alongside every log fetch so the machines row
-  // stays current whenever the Cloudflare Worker polls for data.
-  pushMachineMetrics();
-
   res.json({
     success: true,
     data: {
@@ -149,10 +121,6 @@ app.get('/api/v1/dashboard/logs', validateApiKey, (req, res) => {
 // GET /api/v1/dashboard/metrics - Get current metrics
 app.get('/api/v1/dashboard/metrics', validateApiKey, (req, res) => {
   const metrics = getMachineMetrics();
-
-  // Push to Supabase on every metrics request so cloud dashboard stays live.
-  pushMachineMetrics();
-
   res.json({
     success: true,
     data: metrics,
@@ -296,45 +264,15 @@ function removePidFile() {
 async function start() {
   writePidFile();
 
-  // Push metrics to Supabase every 10 seconds so the cloud dashboard stays current.
-  const metricsInterval = setInterval(() => {
-    pushMachineMetrics();
-  }, 10000);
-
   server.listen(PORT, '127.0.0.1', async () => {
     log(CATEGORIES.SERVER, `Running on http://127.0.0.1:${PORT}`, LEVELS.INFO);
-
-    // Push initial metrics immediately so the machine row appears in Supabase
-    // on startup without waiting for the first interval tick.
-    pushMachineMetrics();
-
     const url = await startTunnel(PORT);
     if (url) {
       log(CATEGORIES.SERVER, `Remote access: ${url}`, LEVELS.INFO);
-      // Tunnel URL is live — push again so Supabase row includes tunnel_url right away.
-      pushMachineMetrics();
     } else {
       log(CATEGORIES.SERVER, 'Tunnel connecting in background. It will appear when ready.', LEVELS.INFO);
-      // Poll the config file until the tunnel URL lands, then push once more.
-      // This covers the first-install case where cloudflared takes a few seconds
-      // to handshake — no manual tray Refresh needed.
-      const pollStart = Date.now();
-      const POLL_INTERVAL = 3000;   // check every 3 seconds
-      const POLL_TIMEOUT = 180000; // give up after 3 minutes
-      const tunnelPoller = setInterval(() => {
-        const liveUrl = getTunnelUrl();
-        if (liveUrl) {
-          clearInterval(tunnelPoller);
-          log(CATEGORIES.SERVER, `Tunnel ready (background): ${liveUrl}`, LEVELS.INFO);
-          pushMachineMetrics(); // write tunnel_url into Supabase immediately
-        } else if (Date.now() - pollStart > POLL_TIMEOUT) {
-          clearInterval(tunnelPoller);
-        }
-      }, POLL_INTERVAL);
     }
   });
-
-  process.on('exit', () => clearInterval(metricsInterval));
 }
 
 async function shutdown() {

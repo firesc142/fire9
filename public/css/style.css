@@ -582,6 +582,7 @@ body {
   border-left: 2px solid rgba(255, 255, 255, 0.6);
   z-index: 5;
   pointer-events: none;
+  transition: opacity 0.2s;
 }
 
 /* Bottom-right corner */
@@ -596,6 +597,27 @@ body {
   border-right: 2px solid rgba(255, 255, 255, 0.6);
   z-index: 5;
   pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+/* Hide all CRT corner brackets in fullscreen — clean immersive view */
+:fullscreen .screen-container::before,
+:fullscreen .screen-container::after,
+:-webkit-full-screen .screen-container::before,
+:-webkit-full-screen .screen-container::after,
+:-moz-full-screen .screen-container::before,
+:-moz-full-screen .screen-container::after {
+  opacity: 0;
+  pointer-events: none;
+}
+
+:fullscreen .corner-tr,
+:fullscreen .corner-bl,
+:-webkit-full-screen .corner-tr,
+:-webkit-full-screen .corner-bl,
+:-moz-full-screen .corner-tr,
+:-moz-full-screen .corner-bl {
+  display: none;
 }
 
 /* Top-right & bottom-left via box-shadow on a pseudo of the canvas */

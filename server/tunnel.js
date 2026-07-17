@@ -260,12 +260,6 @@ async function launchTunnel(port, isFirstAttempt) {
         updateConfig({ tunnel: { url: currentUrl } });
         log(CATEGORIES.TUNNEL, `Connected: ${currentUrl}`, LEVELS.INFO);
         pushUrlToWorker(currentUrl);
-        // Push metrics immediately so Supabase gets the tunnel_url on first connect
-        // without waiting for the 10-second interval — no manual refresh needed.
-        try {
-          const { pushMachineMetrics } = require('./supabase-logger');
-          pushMachineMetrics();
-        } catch { /* supabase-logger may not be loaded yet on very first boot */ }
         if (isFirstAttempt && !resolved) { resolved = true; resolve(currentUrl); }
       });
 
