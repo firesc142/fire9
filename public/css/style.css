@@ -76,7 +76,8 @@ body {
   /* Sidebar layout — sidebar left, everything else right */
   display: grid;
   grid-template-columns: 52px 1fr;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: 0 1fr auto;
+  /* banner row collapsed to 0 — privacy uses toast now */
   grid-template-areas:
     "sidebar banner"
     "sidebar main"
@@ -360,6 +361,17 @@ body {
   color: var(--danger);
 }
 
+.btn-view-only {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.btn-view-only.active {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: rgba(255, 152, 0, 0.06);
+}
+
 /* ============================================================
    SIDEBAR NAV — DESKTOP
    ============================================================ */
@@ -483,8 +495,11 @@ body {
    LAYOUT GRID AREAS
    ============================================================ */
 
+/* Privacy banner is now shown as a toast — collapse the grid row to zero */
 #privacy-banner {
   grid-area: banner;
+  display: none !important;
+  /* never takes up layout space */
 }
 
 .status-bar {
@@ -1066,23 +1081,46 @@ body {
   font-size: 11px;
   letter-spacing: 0.04em;
   animation: slideIn 0.2s ease;
-  max-width: 300px;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toast span {
+  flex: 1;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.toast-close:hover {
+  color: var(--text-bright);
 }
 
 .toast.success {
-  border-left: 2px solid var(--success);
+  border-left: 3px solid var(--success);
 }
 
 .toast.error {
-  border-left: 2px solid var(--danger);
+  border-left: 3px solid var(--danger);
 }
 
 .toast.warning {
-  border-left: 2px solid var(--warning);
+  border-left: 3px solid var(--warning);
 }
 
 .toast.info {
-  border-left: 2px solid rgba(255, 255, 255, 0.5);
+  border-left: 3px solid rgba(255, 255, 255, 0.4);
 }
 
 /* ============================================================
@@ -1094,7 +1132,8 @@ body {
   /* Switch to single-column layout */
   body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: 0 1fr auto;
+    /* banner row collapsed */
     grid-template-areas:
       "banner"
       "main"

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -8,18 +9,21 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 </head>
+
 <body>
-  <div id="privacy-banner" class="privacy-banner hidden">
-    <i class="fas fa-eye-slash"></i> Privacy Mode Active — Host screen is blacked out
-  </div>
+  <div id="privacy-banner" class="privacy-banner hidden" aria-hidden="true"></div>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="screen"><i class="fas fa-desktop"></i><span class="tab-label"> Screen</span></button>
+    <button class="tab active" data-tab="screen"><i class="fas fa-desktop"></i><span class="tab-label">
+        Screen</span></button>
     <button class="tab" data-tab="files"><i class="fas fa-folder"></i><span class="tab-label"> Files</span></button>
-    <button class="tab" data-tab="terminal"><i class="fas fa-terminal"></i><span class="tab-label"> Terminal</span></button>
-    <button class="tab" data-tab="clipboard"><i class="fas fa-clipboard"></i><span class="tab-label"> Clipboard</span></button>
+    <button class="tab" data-tab="terminal"><i class="fas fa-terminal"></i><span class="tab-label">
+        Terminal</span></button>
+    <button class="tab" data-tab="clipboard"><i class="fas fa-clipboard"></i><span class="tab-label">
+        Clipboard</span></button>
     <div class="tabs-spacer"></div>
-    <button class="tab tab-logout" id="logout-btn"><i class="fas fa-sign-out-alt"></i><span class="tab-label"> Logout</span></button>
+    <button class="tab tab-logout" id="logout-btn"><i class="fas fa-sign-out-alt"></i><span class="tab-label">
+        Logout</span></button>
   </nav>
 
   <!-- Screen Tab -->
@@ -47,6 +51,7 @@
         <option value="hd">HD Mode</option>
       </select>
       <button id="privacy-toggle-btn" class="btn btn-sm btn-privacy"><i class="fas fa-eye-slash"></i> Privacy</button>
+      <button id="view-only-btn" class="btn btn-sm btn-view-only"><i class="fas fa-eye"></i> View Only</button>
     </div>
     <div class="screen-container">
       <canvas id="screen-canvas" tabindex="0"></canvas>
@@ -68,7 +73,9 @@
     <div id="breadcrumb" class="breadcrumb"></div>
     <div id="file-list" class="file-list"></div>
     <div id="upload-progress" class="upload-progress hidden">
-      <div class="progress-bar"><div class="progress-fill" id="upload-progress-fill"></div></div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="upload-progress-fill"></div>
+      </div>
       <span id="upload-progress-text">0%</span>
     </div>
     <div id="drop-zone" class="drop-zone hidden">
@@ -87,7 +94,8 @@
     <div class="clipboard-panel">
       <div class="controls">
         <button id="clipboard-get-btn" class="btn btn-sm"><i class="fas fa-download"></i> Get Remote</button>
-        <button id="clipboard-send-btn" class="btn btn-sm btn-success"><i class="fas fa-upload"></i> Send to Remote</button>
+        <button id="clipboard-send-btn" class="btn btn-sm btn-success"><i class="fas fa-upload"></i> Send to
+          Remote</button>
         <button id="clipboard-copy-local-btn" class="btn btn-sm"><i class="fas fa-copy"></i> Copy to Local</button>
         <button id="clipboard-paste-local-btn" class="btn btn-sm"><i class="fas fa-paste"></i> Paste from Local</button>
         <label class="toggle-label">
@@ -121,4 +129,5 @@
   <script src="/js/clipboard.js"></script>
   <script src="/js/mobile.js"></script>
 </body>
+
 </html>

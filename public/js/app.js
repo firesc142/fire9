@@ -86,17 +86,19 @@ function updateLatencyDisplay() {
   if (el) el.textContent = latency + ' ms';
 }
 
-// Toast notifications
+// Toast notifications — message can contain safe HTML (icons etc.)
 function showNotification(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
   const toast = document.createElement('div');
-  toast.className = 'toast toast-' + type;
-  toast.innerHTML = '<span>' + message + '</span><button class="toast-close">&times;</button>';
+  toast.className = 'toast ' + type;
+  // Use innerHTML so callers can embed icons; message must be trusted (internal only)
+  toast.innerHTML = '<span>' + message + '</span><button class="toast-close" aria-label="Close">&times;</button>';
   container.appendChild(toast);
   toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
   setTimeout(() => {
-    toast.classList.add('toast-fade');
+    toast.style.transition = 'opacity 0.3s';
+    toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
   }, 4000);
 }

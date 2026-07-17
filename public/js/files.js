@@ -1,5 +1,5 @@
 // File browser
-(function() {
+(function () {
   const fileList = document.getElementById('file-list');
   const breadcrumb = document.getElementById('breadcrumb');
   const drivesList = document.getElementById('drives-list');
@@ -46,6 +46,8 @@
       }
       const data = await res.json();
       currentPath = data.path;
+      // Expose for canvas drag-and-drop uploads
+      window._remoteCurrentPath = currentPath;
       renderBreadcrumb(data.path);
       renderFileList(data.items);
     } catch (err) {

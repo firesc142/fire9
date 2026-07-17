@@ -15,9 +15,11 @@
   const modeSelect = document.getElementById('stream-mode-select');
   const privacyBtn = document.getElementById('privacy-toggle-btn');
   const privacyBanner = document.getElementById('privacy-banner');
+  const viewOnlyBtn = document.getElementById('view-only-btn');
 
   let streaming = false;
   let privacyActive = false;
+  let viewOnlyMode = false;  // when true — all input events are suppressed
   let streamMode = 'efficient';
   let screenWidth = 1920;
   let screenHeight = 1080;
@@ -44,24 +46,28 @@
     }
   }
 
-  // ── §1 / §3 Coordinate mapping ──────────────────────────────────────────────
+  // ── §1 / §3 / §4.3 Coordinate mapping ──────────────────────────────────────────
   // Converts a browser event position to normalised coordinates (0.0 – 1.0)
   // relative to the rendered content area of the canvas (object-fit:contain).
   //
-  // Uses canvas.width/height (= remote desktop resolution) as the intrinsic
-  // source, and getBoundingClientRect() for the CSS display area.
-  // Letterboxing / pillarboxing offsets are computed identically to how the
-  // browser positions the canvas content, so the mapping is pixel-perfect at
-  // any client viewport size or DPI.
+  // §4.3: Subtracts border and padding so the origin is the inner content edge.
+  // §3:   Computes letterbox/pillarbox offset to match object-fit:contain geometry.
   function clientToNormalized(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
+
+    // §4.3 — subtract border and padding (matches getBoundingClientRect spec)
+    const style = window.getComputedStyle(canvas);
+    const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+    const borderTop = parseFloat(style.borderTopWidth) || 0;
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
 
     const srcW = canvas.width || screenWidth;
     const srcH = canvas.height || screenHeight;
     if (!srcW || !srcH) return null;
 
-    const dispW = rect.width;
-    const dispH = rect.height;
+    const dispW = rect.width - borderLeft - paddingLeft;
+    const dispH = rect.height - borderTop - paddingTop;
 
     const srcAspect = srcW / srcH;
     const dispAspect = dispW / dispH;
@@ -72,23 +78,20 @@
       renderW = dispW; renderH = dispH;
       offsetX = 0; offsetY = 0;
     } else if (dispAspect > srcAspect) {
-      // Pillarboxing — content narrower than display
       renderH = dispH;
       renderW = dispH * srcAspect;
       offsetX = (dispW - renderW) / 2;
       offsetY = 0;
     } else {
-      // Letterboxing — content shorter than display
       renderW = dispW;
       renderH = dispW / srcAspect;
       offsetX = 0;
       offsetY = (dispH - renderH) / 2;
     }
 
-    const relX = clientX - rect.left;
-    const relY = clientY - rect.top;
+    const relX = (clientX - rect.left) - borderLeft - paddingLeft;
+    const relY = (clientY - rect.top) - borderTop - paddingTop;
 
-    // Discard events that land in black-bar areas
     if (relX < offsetX || relX > offsetX + renderW ||
       relY < offsetY || relY > offsetY + renderH) {
       return null;
@@ -103,6 +106,24 @@
   function touchToNormalized(touch) {
     return clientToNormalized(touch.clientX, touch.clientY);
   }
+
+  // ── §5.4 Client DPI-change listener ──────────────────────────────────────────
+  // When the user changes Windows DPI scaling or browser zoom, devicePixelRatio
+  // changes. We notify the server so it can log/adapt, and the coordinate
+  // mapper automatically uses the new getBoundingClientRect() values.
+  (function watchDPIChanges() {
+    let lastDPR = window.devicePixelRatio;
+    function onDPRChange() {
+      if (window.devicePixelRatio === lastDPR) return;
+      lastDPR = window.devicePixelRatio;
+      notifyViewportChange();
+      // Re-register with the new DPR value
+      const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mq.addEventListener('change', onDPRChange, { once: true });
+    }
+    const mq = matchMedia(`(resolution: ${lastDPR}dppx)`);
+    mq.addEventListener('change', onDPRChange, { once: true });
+  })();
 
   // ── §9 Viewport change notification ────────────────────────────────────────
   // Tells the server the client's current viewport and video dimensions so it
@@ -119,13 +140,16 @@
     });
   }
 
-  // Monitor viewport/fullscreen changes (§9)
+  // Monitor viewport/fullscreen/orientation changes (§9)
   const resizeObserver = new ResizeObserver(() => notifyViewportChange());
   resizeObserver.observe(canvas);
   window.addEventListener('resize', notifyViewportChange);
   document.addEventListener('fullscreenchange', () => {
-    // Allow the browser to finish the transition before reading new dimensions
     setTimeout(notifyViewportChange, 100);
+  });
+  // §9.4 — mobile orientation change
+  window.addEventListener('orientationchange', () => {
+    setTimeout(notifyViewportChange, 300); // wait for resize to complete
   });
 
   // ── Stream controls ──────────────────────────────────────────────────────────
@@ -212,15 +236,40 @@
     });
   }
 
-  // Privacy mode
+  // Privacy mode — show toast instead of the layout-shrinking banner
   privacyBtn.addEventListener('click', () => {
     socket.emit(privacyActive ? 'privacy-disable' : 'privacy-enable');
   });
   socket.on('privacy-status', (data) => {
     privacyActive = data.active;
     privacyBtn.classList.toggle('active', privacyActive);
-    privacyBanner.classList.toggle('hidden', !privacyActive);
+    // Keep the hidden banner element in sync (used by server/other code)
+    if (privacyBanner) privacyBanner.classList.toggle('hidden', !privacyActive);
+    if (privacyActive) {
+      showNotification('<i class="fas fa-eye-slash" style="margin-right:6px"></i>Privacy mode ON — host screen is blacked out', 'warning');
+    } else {
+      showNotification('<i class="fas fa-eye" style="margin-right:6px"></i>Privacy mode OFF — screen visible again', 'success');
+    }
   });
+
+  // View-only mode — toggle blocks all input from reaching the server
+  if (viewOnlyBtn) {
+    viewOnlyBtn.addEventListener('click', () => {
+      viewOnlyMode = !viewOnlyMode;
+      viewOnlyBtn.classList.toggle('active', viewOnlyMode);
+      // Swap icon and label to reflect current state
+      viewOnlyBtn.innerHTML = viewOnlyMode
+        ? '<i class="fas fa-eye"></i> View Only'
+        : '<i class="fas fa-eye"></i> View Only';
+      // Restore normal cursor when in view-only (no remote control happening)
+      canvas.style.cursor = viewOnlyMode ? 'default' : 'none';
+      if (viewOnlyMode) {
+        showNotification('<i class="fas fa-eye" style="margin-right:6px"></i>View-only mode ON — input disabled', 'info');
+      } else {
+        showNotification('<i class="fas fa-computer-mouse" style="margin-right:6px"></i>View-only mode OFF — input enabled', 'success');
+      }
+    });
+  }
 
   // ── HD MODE: full JPEG frames ────────────────────────────────────────────────
   const img = new Image();
@@ -333,7 +382,7 @@
   // ── §10 Mouse move with throttle + buffering ────────────────────────────────
 
   canvas.addEventListener('mousemove', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     const pos = clientToNormalized(e.clientX, e.clientY);
     if (!pos) return;
 
@@ -367,7 +416,7 @@
   // ── §7 / §10 Mouse down — flush pending move first, then click ───────────────
 
   canvas.addEventListener('mousedown', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     canvas.focus();
 
@@ -385,7 +434,7 @@
   });
 
   canvas.addEventListener('mouseup', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
 
     flushPendingMove(); // §10
@@ -400,7 +449,7 @@
   });
 
   canvas.addEventListener('dblclick', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     flushPendingMove();
     const pos = clientToNormalized(e.clientX, e.clientY);
@@ -409,7 +458,7 @@
   });
 
   canvas.addEventListener('wheel', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     socket.emit('mouse-scroll', { deltaX: e.deltaX, deltaY: e.deltaY, timestamp: performance.now() });
   }, { passive: false });
@@ -424,7 +473,7 @@
 
   // Global mouseup so drag is released if cursor leaves the window
   window.addEventListener('mouseup', (e) => {
-    if (!streaming || !isDragging) return;
+    if (!streaming || !isDragging || viewOnlyMode) return;
     flushPendingMove();
     const pos = clientToNormalized(e.clientX, e.clientY) || lastDragPos || dragStartPos || { x: 0, y: 0 };
     const button = ['left', 'middle', 'right'][e.button] || 'left';
@@ -440,10 +489,101 @@
     }
   });
 
-  // ── Keyboard ────────────────────────────────────────────────────────────────
+  // ── Drag & drop files onto the canvas ───────────────────────────────────────
+  // Dragging local files over the streaming canvas uploads them to the remote
+  // machine's current directory via the files upload API.
+  // Shows a drop overlay while dragging so it's visually distinct from remote
+  // mouse drag operations (which are pointer events, not HTML5 drag events).
+
+  let dragOverlay = null;
+
+  function createDragOverlay() {
+    if (dragOverlay) return;
+    dragOverlay = document.createElement('div');
+    dragOverlay.id = 'canvas-drop-overlay';
+    dragOverlay.style.cssText = [
+      'position:absolute', 'inset:0', 'z-index:20',
+      'display:flex', 'flex-direction:column',
+      'align-items:center', 'justify-content:center', 'gap:12px',
+      'background:rgba(0,0,0,0.75)',
+      'border:2px dashed rgba(255,255,255,0.5)',
+      'color:#f4f4f4',
+      'font-family:\'Share Tech Mono\',monospace',
+      'font-size:13px', 'letter-spacing:0.1em', 'text-transform:uppercase',
+      'pointer-events:none',
+    ].join(';');
+    dragOverlay.innerHTML = '<i class="fas fa-cloud-upload-alt" style="font-size:36px;opacity:0.7"></i><span>Drop to upload to remote</span>';
+    canvas.parentElement.style.position = 'relative';
+    canvas.parentElement.appendChild(dragOverlay);
+  }
+
+  function removeDragOverlay() {
+    if (dragOverlay) { dragOverlay.remove(); dragOverlay = null; }
+  }
+
+  canvas.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    createDragOverlay();
+  });
+
+  canvas.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  canvas.addEventListener('dragleave', (e) => {
+    // Only remove overlay when leaving the canvas itself, not its children
+    if (canvas.contains(e.relatedTarget)) return;
+    removeDragOverlay();
+  });
+
+  canvas.addEventListener('drop', (e) => {
+    e.preventDefault();
+    removeDragOverlay();
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    uploadFilesToRemote(files);
+  });
+
+  function uploadFilesToRemote(files) {
+    // Get the current remote path from the files tab's breadcrumb context,
+    // falling back to the home directory on the remote machine.
+    const remotePath = (window._remoteCurrentPath) || '';
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
+
+    const fileNames = Array.from(files).map(f => f.name).join(', ');
+    showNotification('<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Uploading: ' + fileNames, 'info');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/files/upload?path=' + encodeURIComponent(remotePath));
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round(ev.loaded / ev.total * 100);
+        // Update the last toast's text live
+        const toasts = document.querySelectorAll('#toast-container .toast');
+        const last = toasts[toasts.length - 1];
+        if (last) last.querySelector('span').innerHTML =
+          '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Uploading ' + pct + '%…';
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        showNotification('<i class="fas fa-check" style="margin-right:6px"></i>Uploaded: ' + fileNames, 'success');
+      } else {
+        showNotification('<i class="fas fa-times" style="margin-right:6px"></i>Upload failed', 'error');
+      }
+    };
+    xhr.onerror = () => showNotification('Upload failed: network error', 'error');
+    xhr.send(formData);
+  }
 
   canvas.addEventListener('keydown', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     const modifiers = [];
     if (e.ctrlKey) modifiers.push('ctrl');
@@ -454,7 +594,7 @@
   });
 
   canvas.addEventListener('keyup', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     socket.emit('key-release', { key: e.key, code: e.code, timestamp: performance.now() });
   });
@@ -467,7 +607,7 @@
   let touchTimeout = null;
 
   canvas.addEventListener('touchstart', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     const touch = e.touches[0];
     touchStartPos = touchToNormalized(touch);
@@ -487,7 +627,7 @@
   }, { passive: false });
 
   canvas.addEventListener('touchmove', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     if (touchTimeout) { clearTimeout(touchTimeout); touchTimeout = null; }
     const pos = touchToNormalized(e.touches[0]);
@@ -498,7 +638,7 @@
   }, { passive: false });
 
   canvas.addEventListener('touchend', (e) => {
-    if (!streaming) return;
+    if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     if (touchTimeout) { clearTimeout(touchTimeout); touchTimeout = null; }
 
