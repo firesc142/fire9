@@ -30,22 +30,6 @@
   let dragStartPos = null;  // normalised {x,y} at mousedown
   let lastDragPos = null;   // last normalised pos during drag
 
-  // ── Mouse move throttle (§10 ~60fps) ───────────────────────────────────────
-  const MOUSE_THROTTLE = 16; // ms ≈ 60 fps
-  let lastMouseEmit = 0;
-  let pendingMove = null;    // buffered move waiting for throttle window
-  let pendingMoveTimer = null;
-
-  // ── §10 Flush pending move before clicks ────────────────────────────────────
-  function flushPendingMove() {
-    if (pendingMoveTimer) { clearTimeout(pendingMoveTimer); pendingMoveTimer = null; }
-    if (pendingMove) {
-      socket.emit('mouse-move', pendingMove);
-      pendingMove = null;
-      lastMouseEmit = performance.now();
-    }
-  }
-
   // ── §1 / §3 / §4.3 Coordinate mapping ──────────────────────────────────────────
   // Converts a browser event position to normalised coordinates (0.0 – 1.0)
   // relative to the rendered content area of the canvas (object-fit:contain).
@@ -270,8 +254,7 @@
       viewOnlyBtn.innerHTML = viewOnlyMode
         ? '<i class="fas fa-eye"></i> View Only'
         : '<i class="fas fa-eye"></i> View Only';
-      // Restore normal cursor when in view-only (no remote control happening)
-      canvas.style.cursor = viewOnlyMode ? 'default' : 'none';
+      // Keep cursor hidden at all times over the canvas
       if (viewOnlyMode) {
         showNotification('<i class="fas fa-eye" style="margin-right:6px"></i>View-only mode ON — input disabled', 'info');
       } else {
@@ -388,48 +371,16 @@
     }
   });
 
-  // ── §10 Mouse move with throttle + buffering ────────────────────────────────
+  // ── §10 Mouse events ────────────────────────────────────────────────────────
+  // Mouse move is NOT sent to the server — the remote PC cursor does not follow
+  // the client's hover. Only clicks, scrolls and drags are transmitted.
 
-  canvas.addEventListener('mousemove', (e) => {
-    if (!streaming || viewOnlyMode) return;
-    const pos = clientToNormalized(e.clientX, e.clientY);
-    if (!pos) return;
-
-    const now = performance.now();
-    // Always keep last known position for drag tracking
-    if (isDragging) lastDragPos = pos;
-
-    if (now - lastMouseEmit >= MOUSE_THROTTLE) {
-      // Send immediately — throttle window has passed
-      socket.emit('mouse-move', { ...pos, timestamp: now, isDragging });
-      lastMouseEmit = now;
-      pendingMove = null;
-      if (pendingMoveTimer) { clearTimeout(pendingMoveTimer); pendingMoveTimer = null; }
-    } else {
-      // Buffer and schedule flush for the remaining throttle window
-      pendingMove = { ...pos, timestamp: now, isDragging };
-      if (!pendingMoveTimer) {
-        const delay = MOUSE_THROTTLE - (now - lastMouseEmit);
-        pendingMoveTimer = setTimeout(() => {
-          if (pendingMove) {
-            socket.emit('mouse-move', pendingMove);
-            pendingMove = null;
-            lastMouseEmit = performance.now();
-          }
-          pendingMoveTimer = null;
-        }, delay);
-      }
-    }
-  });
-
-  // ── §7 / §10 Mouse down — flush pending move first, then click ───────────────
+  // ── §7 / §10 Mouse down ──────────────────────────────────────────────────────
 
   canvas.addEventListener('mousedown', (e) => {
     if (!streaming || viewOnlyMode) return;
     e.preventDefault();
     canvas.focus();
-
-    flushPendingMove(); // §10 — ensure last position is committed before click
 
     const pos = clientToNormalized(e.clientX, e.clientY);
     if (!pos) return;
@@ -446,11 +397,8 @@
     if (!streaming || viewOnlyMode) return;
     e.preventDefault();
 
-    flushPendingMove(); // §10
-
     const pos = clientToNormalized(e.clientX, e.clientY);
     const button = ['left', 'middle', 'right'][e.button] || 'left';
-    // §7 — fall back to last known drag position if released outside canvas
     const finalPos = pos || lastDragPos || dragStartPos || { x: 0, y: 0 };
 
     isDragging = false;
@@ -460,7 +408,6 @@
   canvas.addEventListener('dblclick', (e) => {
     if (!streaming || viewOnlyMode) return;
     e.preventDefault();
-    flushPendingMove();
     const pos = clientToNormalized(e.clientX, e.clientY);
     if (!pos) return;
     socket.emit('mouse-click', { ...pos, button: 'left', type: 'double', timestamp: performance.now() });
@@ -474,21 +421,13 @@
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // ── §7 Drag — continuous moves while button is held ─────────────────────────
-  // The 'mouse-drag' event is sent during mousemove when isDragging is true.
-  // The server 'mouse-drag' handler expects {startX, startY, endX, endY} for
-  // a single atomic drag, so we also send that on mouseup for compatibility.
-  canvas.addEventListener('mouseup', (e) => { }, { capture: true }); // already handled above
-
-  // Global mouseup so drag is released if cursor leaves the window
+  // Global mouseup — release drag if mouse leaves window
   window.addEventListener('mouseup', (e) => {
     if (!streaming || !isDragging || viewOnlyMode) return;
-    flushPendingMove();
     const pos = clientToNormalized(e.clientX, e.clientY) || lastDragPos || dragStartPos || { x: 0, y: 0 };
     const button = ['left', 'middle', 'right'][e.button] || 'left';
     isDragging = false;
     socket.emit('mouse-up', { ...pos, button, timestamp: performance.now() });
-    // Also send the complete drag summary that the server mouse-drag handler understands
     if (dragStartPos) {
       socket.emit('mouse-drag', {
         startX: dragStartPos.x, startY: dragStartPos.y,
@@ -640,10 +579,7 @@
     e.preventDefault();
     if (touchTimeout) { clearTimeout(touchTimeout); touchTimeout = null; }
     const pos = touchToNormalized(e.touches[0]);
-    if (pos) {
-      lastDragPos = pos;
-      socket.emit('mouse-move', { ...pos, isDragging, timestamp: performance.now() });
-    }
+    if (pos) lastDragPos = pos; // track position for drag release
   }, { passive: false });
 
   canvas.addEventListener('touchend', (e) => {

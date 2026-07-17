@@ -638,9 +638,7 @@ body {
   /* object-fit:contain ensures the browser letterboxes/pillarboxes the canvas
      content — the JS coordinate mapper mirrors this same geometry */
   object-fit: contain;
-  /* Hide the local system cursor over the canvas — the spec requires the
-     remote cursor position to be the only visual feedback (§8 cursor sync) */
-  cursor: none;
+  cursor: default;
   outline: none;
   display: block;
 }
@@ -1282,73 +1280,7 @@ body {
     padding: 36px 28px;
   }
 
-  /* Mobile trackpad */
-  .mobile-trackpad {
-    display: none !important;
-    position: fixed;
-    bottom: 56px;
-    /* above navbar */
-    left: 0;
-    right: 0;
-    height: 180px;
-    background: rgba(10, 10, 10, 0.96);
-    border-top: 1px solid var(--border);
-    z-index: 150;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 8px;
-  }
 
-  .trackpad-area {
-    width: 90%;
-    height: 130px;
-    background: var(--surface);
-    border: 1px solid var(--border-bright);
-    border-radius: var(--radius);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    touch-action: none;
-  }
-
-  .trackpad-buttons {
-    display: flex;
-    gap: 10px;
-  }
-
-  .trackpad-btn {
-    padding: 6px 20px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-bright);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .mobile-keyboard-toggle {
-    display: none !important;
-    position: fixed;
-    bottom: 242px;
-    right: 12px;
-    z-index: 160;
-    padding: 10px 14px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 50%;
-    color: var(--text-bright);
-    font-size: 16px;
-    cursor: pointer;
-  }
 }
 
 
