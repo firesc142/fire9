@@ -117,13 +117,13 @@ const MODIFIER_VK = {
 
 function sendKeyDown(vk) {
   if (!SendInput) return;
-  const input = { type: INPUT_KEYBOARD, _padding: [0,0,0,0], u: { ki: { wVk: vk, wScan: 0, dwFlags: 0, time: 0, dwExtraInfo: 0 } } };
+  const input = { type: INPUT_KEYBOARD, _padding: [0, 0, 0, 0], u: { ki: { wVk: vk, wScan: 0, dwFlags: 0, time: 0, dwExtraInfo: 0 } } };
   SendInput(1, [input], koffi.sizeof(INPUT));
 }
 
 function sendKeyUp(vk) {
   if (!SendInput) return;
-  const input = { type: INPUT_KEYBOARD, _padding: [0,0,0,0], u: { ki: { wVk: vk, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } };
+  const input = { type: INPUT_KEYBOARD, _padding: [0, 0, 0, 0], u: { ki: { wVk: vk, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } };
   SendInput(1, [input], koffi.sizeof(INPUT));
 }
 
@@ -133,13 +133,13 @@ function sendMouseClick(button, down) {
   if (button === 'left') flags = down ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
   else if (button === 'right') flags = down ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
   else if (button === 'middle') flags = down ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
-  const input = { type: INPUT_MOUSE, _padding: [0,0,0,0], u: { mi: { dx: 0, dy: 0, mouseData: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 } } };
+  const input = { type: INPUT_MOUSE, _padding: [0, 0, 0, 0], u: { mi: { dx: 0, dy: 0, mouseData: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 } } };
   SendInput(1, [input], koffi.sizeof(INPUT));
 }
 
 function sendMouseWheel(delta) {
   if (!SendInput) return;
-  const input = { type: INPUT_MOUSE, _padding: [0,0,0,0], u: { mi: { dx: 0, dy: 0, mouseData: delta, dwFlags: MOUSEEVENTF_WHEEL, time: 0, dwExtraInfo: 0 } } };
+  const input = { type: INPUT_MOUSE, _padding: [0, 0, 0, 0], u: { mi: { dx: 0, dy: 0, mouseData: delta, dwFlags: MOUSEEVENTF_WHEEL, time: 0, dwExtraInfo: 0 } } };
   SendInput(1, [input], koffi.sizeof(INPUT));
 }
 
@@ -328,12 +328,27 @@ function handleConnection(socket) {
   });
 
   socket.on('mouse-drag', (data) => {
+    // Handles the end-of-drag summary: {startX, startY, endX, endY} (normalised 0–1).
+    // This is sent on mouseup/touchend after a drag completes.
+    // Continuous cursor movement during the drag is handled by 'mouse-move'.
     try {
       const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-      const startX = Math.round(data.startX * bounds.width) + (bounds.x || 0);
-      const startY = Math.round(data.startY * bounds.height) + (bounds.y || 0);
-      const endX = Math.round(data.endX * bounds.width) + (bounds.x || 0);
-      const endY = Math.round(data.endY * bounds.height) + (bounds.y || 0);
+
+      // §7 Jump validation — ignore teleports larger than 80% of the desktop
+      // (indicates a corrupted or out-of-order event)
+      const maxJumpFraction = 0.8;
+      const dxFrac = Math.abs((data.endX || 0) - (data.startX || 0));
+      const dyFrac = Math.abs((data.endY || 0) - (data.startY || 0));
+      if (dxFrac > maxJumpFraction || dyFrac > maxJumpFraction) {
+        console.warn('[screen] mouse-drag jump ignored:', { dxFrac, dyFrac });
+        return;
+      }
+
+      const startX = Math.round((data.startX || 0) * bounds.width) + (bounds.x || 0);
+      const startY = Math.round((data.startY || 0) * bounds.height) + (bounds.y || 0);
+      const endX = Math.round((data.endX || 0) * bounds.width) + (bounds.x || 0);
+      const endY = Math.round((data.endY || 0) * bounds.height) + (bounds.y || 0);
+
       SetCursorPos(startX, startY);
       sendMouseClick('left', true);
       SetCursorPos(endX, endY);
@@ -341,6 +356,15 @@ function handleConnection(socket) {
     } catch (err) {
       console.error('Mouse drag error:', err.message);
     }
+  });
+
+  // §9 Viewport change — client notifies us of its display dimensions.
+  // Logged for diagnostics; can be used to adapt stream quality in future.
+  socket.on('viewport-change', (data) => {
+    // No action needed server-side for single-monitor normalised coordinates —
+    // the server always maps (nx * bounds.width, ny * bounds.height) regardless
+    // of what resolution the client is running at.
+    // Keeping this handler prevents unhandled-event noise in socket.io debug logs.
   });
 
   socket.on('key-press', (data) => {
@@ -371,8 +395,8 @@ function handleConnection(socket) {
       if (!data.text || !SendInput) return;
       for (const char of data.text) {
         const code = char.charCodeAt(0);
-        const down = { type: INPUT_KEYBOARD, _padding: [0,0,0,0], u: { ki: { wVk: 0, wScan: code, dwFlags: KEYEVENTF_UNICODE, time: 0, dwExtraInfo: 0 } } };
-        const up = { type: INPUT_KEYBOARD, _padding: [0,0,0,0], u: { ki: { wVk: 0, wScan: code, dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } };
+        const down = { type: INPUT_KEYBOARD, _padding: [0, 0, 0, 0], u: { ki: { wVk: 0, wScan: code, dwFlags: KEYEVENTF_UNICODE, time: 0, dwExtraInfo: 0 } } };
+        const up = { type: INPUT_KEYBOARD, _padding: [0, 0, 0, 0], u: { ki: { wVk: 0, wScan: code, dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } };
         SendInput(1, [down], koffi.sizeof(INPUT));
         SendInput(1, [up], koffi.sizeof(INPUT));
       }

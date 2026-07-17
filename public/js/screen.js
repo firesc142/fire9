@@ -1,4 +1,6 @@
 // Screen viewer and remote control
+// Coordinate system follows industry-standard-mouse.md:
+//   Client → normalised (0–1) → Server → logical desktop pixels
 (function () {
   const canvas = document.getElementById('screen-canvas');
   const ctx = canvas.getContext('2d');
@@ -7,7 +9,7 @@
   const stopBtn = document.getElementById('stop-stream-btn');
   const fullscreenBtn = document.getElementById('fullscreen-btn');
   const screenshotBtn = document.getElementById('screenshot-btn');
-  const monitorSelect = document.getElementById('monitor-select'); // may be null (removed from UI)
+  const monitorSelect = document.getElementById('monitor-select');
   const fpsSelect = document.getElementById('fps-select');
   const qualitySelect = document.getElementById('quality-select');
   const modeSelect = document.getElementById('stream-mode-select');
@@ -19,29 +21,131 @@
   let streamMode = 'efficient';
   let screenWidth = 1920;
   let screenHeight = 1080;
-  let isDragging = false;
-  let dragStartPos = null;
-  let lastMouseEmit = 0;
   let lastFrameSeq = 0;
-  const MOUSE_THROTTLE = 16;
 
-  // Start streaming
+  // ── Drag state (§7 Drag Operations) ────────────────────────────────────────
+  let isDragging = false;
+  let dragStartPos = null;  // normalised {x,y} at mousedown
+  let lastDragPos = null;   // last normalised pos during drag
+
+  // ── Mouse move throttle (§10 ~60fps) ───────────────────────────────────────
+  const MOUSE_THROTTLE = 16; // ms ≈ 60 fps
+  let lastMouseEmit = 0;
+  let pendingMove = null;    // buffered move waiting for throttle window
+  let pendingMoveTimer = null;
+
+  // ── §10 Flush pending move before clicks ────────────────────────────────────
+  function flushPendingMove() {
+    if (pendingMoveTimer) { clearTimeout(pendingMoveTimer); pendingMoveTimer = null; }
+    if (pendingMove) {
+      socket.emit('mouse-move', pendingMove);
+      pendingMove = null;
+      lastMouseEmit = performance.now();
+    }
+  }
+
+  // ── §1 / §3 Coordinate mapping ──────────────────────────────────────────────
+  // Converts a browser event position to normalised coordinates (0.0 – 1.0)
+  // relative to the rendered content area of the canvas (object-fit:contain).
+  //
+  // Uses canvas.width/height (= remote desktop resolution) as the intrinsic
+  // source, and getBoundingClientRect() for the CSS display area.
+  // Letterboxing / pillarboxing offsets are computed identically to how the
+  // browser positions the canvas content, so the mapping is pixel-perfect at
+  // any client viewport size or DPI.
+  function clientToNormalized(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+
+    const srcW = canvas.width || screenWidth;
+    const srcH = canvas.height || screenHeight;
+    if (!srcW || !srcH) return null;
+
+    const dispW = rect.width;
+    const dispH = rect.height;
+
+    const srcAspect = srcW / srcH;
+    const dispAspect = dispW / dispH;
+
+    let renderW, renderH, offsetX, offsetY;
+
+    if (Math.abs(dispAspect - srcAspect) < 0.01) {
+      renderW = dispW; renderH = dispH;
+      offsetX = 0; offsetY = 0;
+    } else if (dispAspect > srcAspect) {
+      // Pillarboxing — content narrower than display
+      renderH = dispH;
+      renderW = dispH * srcAspect;
+      offsetX = (dispW - renderW) / 2;
+      offsetY = 0;
+    } else {
+      // Letterboxing — content shorter than display
+      renderW = dispW;
+      renderH = dispW / srcAspect;
+      offsetX = 0;
+      offsetY = (dispH - renderH) / 2;
+    }
+
+    const relX = clientX - rect.left;
+    const relY = clientY - rect.top;
+
+    // Discard events that land in black-bar areas
+    if (relX < offsetX || relX > offsetX + renderW ||
+      relY < offsetY || relY > offsetY + renderH) {
+      return null;
+    }
+
+    return {
+      x: (relX - offsetX) / renderW,
+      y: (relY - offsetY) / renderH,
+    };
+  }
+
+  function touchToNormalized(touch) {
+    return clientToNormalized(touch.clientX, touch.clientY);
+  }
+
+  // ── §9 Viewport change notification ────────────────────────────────────────
+  // Tells the server the client's current viewport and video dimensions so it
+  // can validate or log coordinate context.  Called on resize and fullscreen.
+  function notifyViewportChange() {
+    if (!streaming) return;
+    socket.emit('viewport-change', {
+      clientWidth: window.innerWidth,
+      clientHeight: window.innerHeight,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      timestamp: performance.now(),
+    });
+  }
+
+  // Monitor viewport/fullscreen changes (§9)
+  const resizeObserver = new ResizeObserver(() => notifyViewportChange());
+  resizeObserver.observe(canvas);
+  window.addEventListener('resize', notifyViewportChange);
+  document.addEventListener('fullscreenchange', () => {
+    // Allow the browser to finish the transition before reading new dimensions
+    setTimeout(notifyViewportChange, 100);
+  });
+
+  // ── Stream controls ──────────────────────────────────────────────────────────
+
   startBtn.addEventListener('click', () => {
     streamMode = modeSelect.value;
     socket.emit('start-stream', {
       fps: parseInt(fpsSelect.value),
       quality: parseInt(qualitySelect.value),
       monitor: monitorSelect ? parseInt(monitorSelect.value) : 0,
-      mode: streamMode
+      mode: streamMode,
     });
     streaming = true;
     startBtn.disabled = true;
     stopBtn.disabled = false;
     placeholder.classList.add('hidden');
     canvas.focus();
+    notifyViewportChange();
   });
 
-  // Stop streaming
   stopBtn.addEventListener('click', () => {
     socket.emit('stop-stream');
     streaming = false;
@@ -51,15 +155,11 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
 
-  // Mode change
   modeSelect.addEventListener('change', () => {
     streamMode = modeSelect.value;
-    if (streaming) {
-      socket.emit('set-stream-mode', streamMode);
-    }
+    if (streaming) socket.emit('set-stream-mode', streamMode);
   });
 
-  // FPS/Quality change
   fpsSelect.addEventListener('change', () => {
     if (streaming) socket.emit('set-fps', parseInt(fpsSelect.value));
   });
@@ -68,23 +168,15 @@
     if (streaming) socket.emit('set-quality', parseInt(qualitySelect.value));
   });
 
-  // Fullscreen
   fullscreenBtn.addEventListener('click', () => {
     const container = canvas.parentElement;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      container.requestFullscreen();
-    }
+    if (document.fullscreenElement) document.exitFullscreen();
+    else container.requestFullscreen();
   });
 
-  // Screenshot
   screenshotBtn.addEventListener('click', () => {
     socket.emit('get-screenshot', {}, (data) => {
-      if (data.error) {
-        showNotification('Screenshot failed: ' + data.error, 'error');
-        return;
-      }
+      if (data.error) { showNotification('Screenshot failed: ' + data.error, 'error'); return; }
       const link = document.createElement('a');
       link.href = 'data:image/' + (data.format || 'png') + ';base64,' + data.data;
       link.download = 'screenshot-' + Date.now() + '.' + (data.format || 'png');
@@ -94,10 +186,7 @@
   });
 
   socket.on('screenshot-result', (data) => {
-    if (data.error) {
-      showNotification('Screenshot failed: ' + data.error, 'error');
-      return;
-    }
+    if (data.error) { showNotification('Screenshot failed: ' + data.error, 'error'); return; }
     const link = document.createElement('a');
     link.href = 'data:image/' + (data.format || 'png') + ';base64,' + data.data;
     link.download = 'screenshot-' + Date.now() + '.' + (data.format || 'png');
@@ -117,7 +206,6 @@
       monitorSelect.appendChild(opt);
     });
   });
-
   if (monitorSelect) {
     monitorSelect.addEventListener('change', () => {
       socket.emit('set-monitor', parseInt(monitorSelect.value));
@@ -126,20 +214,15 @@
 
   // Privacy mode
   privacyBtn.addEventListener('click', () => {
-    if (privacyActive) {
-      socket.emit('privacy-disable');
-    } else {
-      socket.emit('privacy-enable');
-    }
+    socket.emit(privacyActive ? 'privacy-disable' : 'privacy-enable');
   });
-
   socket.on('privacy-status', (data) => {
     privacyActive = data.active;
     privacyBtn.classList.toggle('active', privacyActive);
     privacyBanner.classList.toggle('hidden', !privacyActive);
   });
 
-  // === HD MODE: Receive full JPEG frames ===
+  // ── HD MODE: full JPEG frames ────────────────────────────────────────────────
   const img = new Image();
   img.onload = () => {
     if (streamMode !== 'hd') return;
@@ -148,8 +231,8 @@
     screenWidth = img.width;
     screenHeight = img.height;
     ctx.drawImage(img, 0, 0);
+    notifyViewportChange(); // §9 — resolution known after first frame
   };
-
   socket.on('screen-frame', (data) => {
     if (streamMode !== 'hd') return;
     img.src = 'data:image/jpeg;base64,' + data.data;
@@ -157,7 +240,7 @@
     if (data.height) screenHeight = data.height;
   });
 
-  // === EFFICIENT MODE: Receive tile diffs ===
+  // ── EFFICIENT MODE: tile diffs ───────────────────────────────────────────────
   const FMT_RAW_DEFLATE = 0x00;
   const FMT_WEBP = 0x01;
   const HEADER_SIZE = 14;
@@ -165,17 +248,16 @@
 
   function ensureCanvasSize(width, height, isKeyframe) {
     if (canvas.width === width && canvas.height === height) return;
-    let savedImage = null;
+    let saved = null;
     if (canvas.width > 0 && canvas.height > 0) {
-      savedImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      saved = ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
     canvas.width = width;
     canvas.height = height;
-    if (savedImage && !isKeyframe) {
-      ctx.putImageData(savedImage, 0, 0);
-    }
+    if (saved && !isKeyframe) ctx.putImageData(saved, 0, 0);
     screenWidth = width;
     screenHeight = height;
+    notifyViewportChange(); // §9 — resolution updated
   }
 
   function drawDeflateTile(bytes, tileX, tileY, tileSize, width, height) {
@@ -213,7 +295,6 @@
         socket.emit('request-keyframe');
       }
       lastFrameSeq = frameSeq;
-
       ensureCanvasSize(width, height, isKeyframe);
 
       const tiles = [];
@@ -232,11 +313,9 @@
           offset += tile.dataLength;
           const tileX = tile.col * tileSize;
           const tileY = tile.row * tileSize;
-          const blob = new Blob([data], { type: 'image/webp' });
-          createImageBitmap(blob).then((bmp) => {
-            ctx.drawImage(bmp, tileX, tileY);
-            bmp.close && bmp.close();
-          }).catch(() => { });
+          createImageBitmap(new Blob([data], { type: 'image/webp' }))
+            .then((bmp) => { ctx.drawImage(bmp, tileX, tileY); bmp.close && bmp.close(); })
+            .catch(() => { });
         }
       } else {
         for (const tile of tiles) {
@@ -251,98 +330,48 @@
     }
   });
 
-  // ── Coordinate mapping ──────────────────────────────────────────────────────
-  // Converts a browser event position to normalised coordinates (0.0 – 1.0)
-  // relative to the actual rendered screen content on the canvas.
-  //
-  // Problem being solved:
-  //   The canvas intrinsic size = remote desktop resolution (e.g. 1920×1080).
-  //   The canvas CSS display size = whatever the client's viewport gives it.
-  //   Dividing raw clientX/Y by the CSS size is WRONG when the two don't
-  //   match — the click lands in the wrong place on the remote desktop.
-  //
-  // Solution (industry-standard normalised-coordinate approach):
-  //   1. Compute how the canvas content is actually rendered inside its CSS box
-  //      (letterboxing / pillarboxing, same as CSS object-fit:contain).
-  //   2. Reject clicks that fall in the black-bar areas.
-  //   3. Normalise to 0–1 over the rendered content area only.
-  //   4. Server maps (nx, ny) → (nx * desktopW, ny * desktopH) in logical px.
-  //
-  // This is resolution-independent: the same normalised point maps correctly
-  // on a 1366×768, 1920×1080, or 4K remote desktop.
-  function clientToNormalized(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-
-    // Intrinsic size = remote desktop resolution (set by incoming frames)
-    const srcW = canvas.width || screenWidth;
-    const srcH = canvas.height || screenHeight;
-    if (!srcW || !srcH) return null;
-
-    // CSS display size (what the browser actually shows)
-    const dispW = rect.width;
-    const dispH = rect.height;
-
-    const srcAspect = srcW / srcH;
-    const dispAspect = dispW / dispH;
-
-    let renderW, renderH, offsetX, offsetY;
-
-    if (Math.abs(dispAspect - srcAspect) < 0.01) {
-      // Aspects match — content fills the entire CSS box
-      renderW = dispW; renderH = dispH;
-      offsetX = 0; offsetY = 0;
-    } else if (dispAspect > srcAspect) {
-      // Display is wider than content → pillarboxing (bars on left & right)
-      renderH = dispH;
-      renderW = dispH * srcAspect;
-      offsetX = (dispW - renderW) / 2;
-      offsetY = 0;
-    } else {
-      // Display is taller than content → letterboxing (bars top & bottom)
-      renderW = dispW;
-      renderH = dispW / srcAspect;
-      offsetX = 0;
-      offsetY = (dispH - renderH) / 2;
-    }
-
-    const relX = clientX - rect.left;
-    const relY = clientY - rect.top;
-
-    // Discard clicks that land in the black-bar areas
-    if (relX < offsetX || relX > offsetX + renderW ||
-      relY < offsetY || relY > offsetY + renderH) {
-      return null;
-    }
-
-    return {
-      x: (relX - offsetX) / renderW,   // 0.0 = left edge,  1.0 = right edge
-      y: (relY - offsetY) / renderH,   // 0.0 = top edge,   1.0 = bottom edge
-    };
-  }
-
-  function touchToNormalized(touch) {
-    return clientToNormalized(touch.clientX, touch.clientY);
-  }
-
-  // ── Mouse events ────────────────────────────────────────────────────────────
+  // ── §10 Mouse move with throttle + buffering ────────────────────────────────
 
   canvas.addEventListener('mousemove', (e) => {
     if (!streaming) return;
-    const now = Date.now();
-    if (now - lastMouseEmit < MOUSE_THROTTLE) return;
-    lastMouseEmit = now;
-
     const pos = clientToNormalized(e.clientX, e.clientY);
     if (!pos) return;
 
-    socket.emit('mouse-move', pos);
-    if (isDragging) socket.emit('mouse-drag', { ...pos, dragging: true });
+    const now = performance.now();
+    // Always keep last known position for drag tracking
+    if (isDragging) lastDragPos = pos;
+
+    if (now - lastMouseEmit >= MOUSE_THROTTLE) {
+      // Send immediately — throttle window has passed
+      socket.emit('mouse-move', { ...pos, timestamp: now, isDragging });
+      lastMouseEmit = now;
+      pendingMove = null;
+      if (pendingMoveTimer) { clearTimeout(pendingMoveTimer); pendingMoveTimer = null; }
+    } else {
+      // Buffer and schedule flush for the remaining throttle window
+      pendingMove = { ...pos, timestamp: now, isDragging };
+      if (!pendingMoveTimer) {
+        const delay = MOUSE_THROTTLE - (now - lastMouseEmit);
+        pendingMoveTimer = setTimeout(() => {
+          if (pendingMove) {
+            socket.emit('mouse-move', pendingMove);
+            pendingMove = null;
+            lastMouseEmit = performance.now();
+          }
+          pendingMoveTimer = null;
+        }, delay);
+      }
+    }
   });
+
+  // ── §7 / §10 Mouse down — flush pending move first, then click ───────────────
 
   canvas.addEventListener('mousedown', (e) => {
     if (!streaming) return;
     e.preventDefault();
     canvas.focus();
+
+    flushPendingMove(); // §10 — ensure last position is committed before click
 
     const pos = clientToNormalized(e.clientX, e.clientY);
     if (!pos) return;
@@ -350,38 +379,68 @@
     const button = ['left', 'middle', 'right'][e.button] || 'left';
     isDragging = true;
     dragStartPos = pos;
-    socket.emit('mouse-down', { ...pos, button });
+    lastDragPos = pos;
+
+    socket.emit('mouse-down', { ...pos, button, timestamp: performance.now() });
   });
 
   canvas.addEventListener('mouseup', (e) => {
     if (!streaming) return;
     e.preventDefault();
 
+    flushPendingMove(); // §10
+
     const pos = clientToNormalized(e.clientX, e.clientY);
     const button = ['left', 'middle', 'right'][e.button] || 'left';
+    // §7 — fall back to last known drag position if released outside canvas
+    const finalPos = pos || lastDragPos || dragStartPos || { x: 0, y: 0 };
+
     isDragging = false;
-    // Fall back to last known position if mouse was released outside canvas
-    socket.emit('mouse-up', { ...(pos || dragStartPos || { x: 0, y: 0 }), button });
+    socket.emit('mouse-up', { ...finalPos, button, timestamp: performance.now() });
   });
 
   canvas.addEventListener('dblclick', (e) => {
     if (!streaming) return;
     e.preventDefault();
-
+    flushPendingMove();
     const pos = clientToNormalized(e.clientX, e.clientY);
     if (!pos) return;
-    socket.emit('mouse-click', { ...pos, button: 'left', type: 'double' });
+    socket.emit('mouse-click', { ...pos, button: 'left', type: 'double', timestamp: performance.now() });
   });
 
   canvas.addEventListener('wheel', (e) => {
     if (!streaming) return;
     e.preventDefault();
-    socket.emit('mouse-scroll', { deltaX: e.deltaX, deltaY: e.deltaY });
+    socket.emit('mouse-scroll', { deltaX: e.deltaX, deltaY: e.deltaY, timestamp: performance.now() });
   }, { passive: false });
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // ── Keyboard events ──────────────────────────────────────────────────────────
+  // ── §7 Drag — continuous moves while button is held ─────────────────────────
+  // The 'mouse-drag' event is sent during mousemove when isDragging is true.
+  // The server 'mouse-drag' handler expects {startX, startY, endX, endY} for
+  // a single atomic drag, so we also send that on mouseup for compatibility.
+  canvas.addEventListener('mouseup', (e) => { }, { capture: true }); // already handled above
+
+  // Global mouseup so drag is released if cursor leaves the window
+  window.addEventListener('mouseup', (e) => {
+    if (!streaming || !isDragging) return;
+    flushPendingMove();
+    const pos = clientToNormalized(e.clientX, e.clientY) || lastDragPos || dragStartPos || { x: 0, y: 0 };
+    const button = ['left', 'middle', 'right'][e.button] || 'left';
+    isDragging = false;
+    socket.emit('mouse-up', { ...pos, button, timestamp: performance.now() });
+    // Also send the complete drag summary that the server mouse-drag handler understands
+    if (dragStartPos) {
+      socket.emit('mouse-drag', {
+        startX: dragStartPos.x, startY: dragStartPos.y,
+        endX: pos.x, endY: pos.y,
+        timestamp: performance.now(),
+      });
+    }
+  });
+
+  // ── Keyboard ────────────────────────────────────────────────────────────────
 
   canvas.addEventListener('keydown', (e) => {
     if (!streaming) return;
@@ -391,16 +450,16 @@
     if (e.altKey) modifiers.push('alt');
     if (e.shiftKey) modifiers.push('shift');
     if (e.metaKey) modifiers.push('meta');
-    socket.emit('key-press', { key: e.key, code: e.code, modifiers });
+    socket.emit('key-press', { key: e.key, code: e.code, modifiers, timestamp: performance.now() });
   });
 
   canvas.addEventListener('keyup', (e) => {
     if (!streaming) return;
     e.preventDefault();
-    socket.emit('key-release', { key: e.key, code: e.code });
+    socket.emit('key-release', { key: e.key, code: e.code, timestamp: performance.now() });
   });
 
-  // ── Touch support (mobile) ───────────────────────────────────────────────────
+  // ── Touch (mobile) ───────────────────────────────────────────────────────────
 
   let touchStartTime = 0;
   let touchStartPos = null;
@@ -415,13 +474,15 @@
     touchStartTime = Date.now();
 
     if (e.touches.length === 2) {
-      if (touchStartPos) socket.emit('mouse-click', { ...touchStartPos, button: 'right', type: 'single' });
+      if (touchStartPos) socket.emit('mouse-click', { ...touchStartPos, button: 'right', type: 'single', timestamp: performance.now() });
       return;
     }
 
     touchTimeout = setTimeout(() => {
       isDragging = true;
-      if (touchStartPos) socket.emit('mouse-down', { ...touchStartPos, button: 'left' });
+      dragStartPos = touchStartPos;
+      lastDragPos = touchStartPos;
+      if (touchStartPos) socket.emit('mouse-down', { ...touchStartPos, button: 'left', timestamp: performance.now() });
     }, 500);
   }, { passive: false });
 
@@ -430,7 +491,10 @@
     e.preventDefault();
     if (touchTimeout) { clearTimeout(touchTimeout); touchTimeout = null; }
     const pos = touchToNormalized(e.touches[0]);
-    if (pos) socket.emit('mouse-move', pos);
+    if (pos) {
+      lastDragPos = pos;
+      socket.emit('mouse-move', { ...pos, isDragging, timestamp: performance.now() });
+    }
   }, { passive: false });
 
   canvas.addEventListener('touchend', (e) => {
@@ -443,15 +507,23 @@
 
     if (isDragging) {
       isDragging = false;
-      if (touchStartPos) socket.emit('mouse-up', { ...touchStartPos, button: 'left' });
+      const finalPos = lastDragPos || touchStartPos || { x: 0, y: 0 };
+      socket.emit('mouse-up', { ...finalPos, button: 'left', timestamp: performance.now() });
+      if (dragStartPos) {
+        socket.emit('mouse-drag', {
+          startX: dragStartPos.x, startY: dragStartPos.y,
+          endX: finalPos.x, endY: finalPos.y,
+          timestamp: performance.now(),
+        });
+      }
       return;
     }
 
     if (duration < 300 && touchStartPos) {
       if (now - lastTapTime < 300) {
-        socket.emit('mouse-click', { ...touchStartPos, button: 'left', type: 'double' });
+        socket.emit('mouse-click', { ...touchStartPos, button: 'left', type: 'double', timestamp: performance.now() });
       } else {
-        socket.emit('mouse-click', { ...touchStartPos, button: 'left', type: 'single' });
+        socket.emit('mouse-click', { ...touchStartPos, button: 'left', type: 'single', timestamp: performance.now() });
       }
       lastTapTime = now;
     }
