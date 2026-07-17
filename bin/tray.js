@@ -25,6 +25,11 @@ const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
 const SERVER_SCRIPT = path.join(__dirname, '..', 'server', 'server.js');
+// .env sitting next to the installed package (global install) or in ~/.paperfly
+const DOTENV_PATHS = [
+  path.join(__dirname, '..', '.env'),
+  path.join(CONFIG_DIR, '.env'),
+];
 
 // Self-repair: ensure VBS in Startup folder has correct paths after npm update
 ensureStartupScript();
@@ -47,7 +52,7 @@ function readConfig() {
     if (fs.existsSync(CONFIG_FILE)) {
       return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
     }
-  } catch {}
+  } catch { }
   return {};
 }
 
@@ -63,9 +68,34 @@ function isServerRunning() {
     process.kill(pid, 0);
     return true;
   } catch {
-    try { fs.unlinkSync(PID_FILE); } catch {}
+    try { fs.unlinkSync(PID_FILE); } catch { }
     return false;
   }
+}
+
+function buildServerEnv() {
+  // Start with the current process environment
+  const env = { ...process.env };
+
+  // Load any .env files we know about so credentials reach the child process
+  // even when launched from the system tray (no shell env loading)
+  for (const envPath of DOTENV_PATHS) {
+    if (fs.existsSync(envPath)) {
+      try {
+        const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx < 1) continue;
+          const k = trimmed.slice(0, eqIdx).trim();
+          const v = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+          if (k && !(k in env)) env[k] = v; // don't override already-set vars
+        }
+      } catch { /* ignore unreadable file */ }
+    }
+  }
+  return env;
 }
 
 function startServer() {
@@ -75,33 +105,34 @@ function startServer() {
     detached: false,
     stdio: 'ignore',
     windowsHide: true,
+    env: buildServerEnv(),
   });
 
   try {
     if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
     fs.writeFileSync(PID_FILE, String(serverProc.pid), 'utf-8');
-  } catch {}
+  } catch { }
 
   serverProc.on('exit', () => {
     serverProc = null;
-    try { fs.unlinkSync(PID_FILE); } catch {}
+    try { fs.unlinkSync(PID_FILE); } catch { }
   });
 }
 
 function stopServer() {
   if (serverProc) {
-    try { serverProc.kill('SIGTERM'); } catch {}
+    try { serverProc.kill('SIGTERM'); } catch { }
     serverProc = null;
   }
   if (fs.existsSync(PID_FILE)) {
     try {
       const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
-      try { process.kill(pid, 'SIGTERM'); } catch {}
+      try { process.kill(pid, 'SIGTERM'); } catch { }
       setTimeout(() => {
-        try { process.kill(pid, 0); execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch {}
+        try { process.kill(pid, 0); execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch { }
       }, 3000);
-    } catch {}
-    try { fs.unlinkSync(PID_FILE); } catch {}
+    } catch { }
+    try { fs.unlinkSync(PID_FILE); } catch { }
   }
 }
 

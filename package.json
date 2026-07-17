@@ -28,6 +28,7 @@
     "bin/",
     "server/",
     "public/",
+    ".env.example",
     "package.json"
   ],
   "license": "MIT",

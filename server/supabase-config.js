@@ -16,7 +16,15 @@
  *             data, created_at)
  */
 
-require('dotenv').config();
+const path = require('path');
+const os = require('os');
+
+// Load .env from multiple locations so the server finds credentials
+// whether run via `npm start` (project root) or installed globally via npm i -g.
+// ~/.paperfly/.env takes priority (user's configured credentials).
+require('dotenv').config({ path: path.join(os.homedir(), '.paperfly', '.env') }); // user home — highest priority
+require('dotenv').config({ override: false }); // project root .env — fallback for dev
+
 const { createClient } = require('@supabase/supabase-js');
 
 let _client = null;

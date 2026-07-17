@@ -61,8 +61,49 @@ function createActivityLog() {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-start: VBScript in Windows Startup folder (same approach as 9remote)
+// Copy .env to ~/.paperfly/.env so tray-launched server can find credentials
 // ---------------------------------------------------------------------------
+function setupEnvFile() {
+  const destEnv = path.join(CONFIG_DIR, '.env');
+
+  // Already configured — don't overwrite
+  if (fs.existsSync(destEnv)) {
+    try {
+      const content = fs.readFileSync(destEnv, 'utf-8');
+      if (content.includes('SUPABASE_URL=https://') && !content.includes('your-project-id')) {
+        console.log('  Supabase credentials already configured in ~/.paperfly/.env');
+        return;
+      }
+    } catch { }
+  }
+
+  // Try to copy from the package's own .env (real credentials, not checked into git)
+  const pkgEnv = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(pkgEnv)) {
+    try {
+      const content = fs.readFileSync(pkgEnv, 'utf-8');
+      // Only copy if it has real (non-placeholder) values
+      if (content.includes('SUPABASE_URL=https://') && !content.includes('your-project-id')) {
+        fs.writeFileSync(destEnv, content, 'utf-8');
+        console.log(`  Supabase credentials copied to ${destEnv}`);
+        return;
+      }
+    } catch { }
+  }
+
+  // Write a template so the user knows what to fill in
+  if (!fs.existsSync(destEnv)) {
+    const template =
+      '# Supabase credentials — fill these in and restart Paperfly\n' +
+      '# Get them from: https://supabase.com/dashboard → your project → Settings → API\n' +
+      'SUPABASE_URL=https://your-project-id.supabase.co\n' +
+      'SUPABASE_SERVICE_KEY=your-service-role-key-here\n';
+    fs.writeFileSync(destEnv, template, 'utf-8');
+    console.log(`  Created ${destEnv} — edit it with your Supabase credentials!`);
+  }
+}
+
+
 function registerAutoStart() {
   try {
     const startupDir = path.join(
@@ -102,7 +143,7 @@ function launchTrayNow() {
 
     fs.writeFileSync(tmpVbs, vbsContent, 'utf-8');
     execSync(`cscript //nologo "${tmpVbs}"`, { stdio: 'ignore', windowsHide: true });
-    try { fs.unlinkSync(tmpVbs); } catch {}
+    try { fs.unlinkSync(tmpVbs); } catch { }
     console.log('  Paperfly tray launched.');
   } catch (err) {
     try {
@@ -137,7 +178,7 @@ async function ensureCloudflaredBinary() {
       console.log('  cloudflared binary already present (npm module)');
       return;
     }
-  } catch {}
+  } catch { }
 
   if (fs.existsSync(binPath)) {
     console.log('  cloudflared binary already present');
@@ -169,6 +210,7 @@ async function main() {
   console.log('[2/5] Initializing configuration...');
   initConfig();
   createActivityLog();
+  setupEnvFile();
 
   console.log('[3/5] Downloading cloudflared tunnel binary...');
   await ensureCloudflaredBinary();
