@@ -279,6 +279,8 @@ async function start() {
     } else {
       log(CATEGORIES.SERVER, 'Tunnel connecting in background. It will appear when ready.', LEVELS.INFO);
     }
+    // Push initial metrics immediately on startup so the dashboard updates right away
+    pushMachineMetrics();
   });
 
   process.on('exit', () => clearInterval(metricsInterval));

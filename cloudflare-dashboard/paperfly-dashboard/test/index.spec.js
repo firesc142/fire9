@@ -1,162 +1,183 @@
-import {
-	env,
-	createExecutionContext,
-	waitOnExecutionContext,
-} from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
-import worker, {
-	base64urlEncode,
-	convertLogsToArray,
-	defaultMetrics,
-} from '../src/index.js';
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import worker from '../src/index.js';
 
-// ── base64urlEncode ───────────────────────────────────────────────────────────
+const PASSWORD = 'test-secret-pw';
+const SUPABASE = { SUPABASE_URL: 'https://fake.supabase.co', SUPABASE_ANON_KEY: 'fake-key' };
+const FULL_ENV = { ...SUPABASE, DASHBOARD_PASSWORD: PASSWORD };
+const NO_AUTH = { ...SUPABASE };                     // no password configured
+const NO_CREDS = { DASHBOARD_PASSWORD: PASSWORD };   // password but no supabase
 
-describe('base64urlEncode', () => {
-	it('encodes empty buffer to empty string', () => {
-		expect(base64urlEncode(new Uint8Array([]))).toBe('');
+const NOW = new Date().toISOString();
+const MACHINE = {
+	machine_id: 'abc', machine_name: 'MyPC', platform: 'win32',
+	memory_percent: 40, used_memory: 4294967296, total_memory: 8589934592,
+	uptime: 7200, node_version: 'v20.0.0', load_average: [0, 0, 0],
+	tunnel_url: 'https://test-tunnel.trycloudflare.com', last_updated: NOW
+};
+const LOG = {
+	id: 'l1', machine_id: 'abc', machine_name: 'MyPC',
+	category: 'server', level: 'info', message: 'up', data: {}, created_at: NOW
+};
+
+function mockSupabase({ machines = [], logs = [] } = {}) {
+	return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+		const u = String(url);
+		if (u.includes('/machines')) return new Response(JSON.stringify(machines), { status: 200, headers: { 'Content-Type': 'application/json' } });
+		if (u.includes('/logs')) return new Response(JSON.stringify(logs), { status: 200, headers: { 'Content-Type': 'application/json' } });
+		return new Response('not found', { status: 404 });
 	});
+}
 
-	it('replaces + with - and / with _', () => {
-		// 0xfb = 11111011, produces base64 '+' character; 0xff / 0xfe produce '/'
-		const result = base64urlEncode(new Uint8Array([0xfb, 0xff, 0xfe]));
-		expect(result).not.toContain('+');
-		expect(result).not.toContain('/');
-		expect(result).not.toContain('=');
+async function getSessionCookie(env = FULL_ENV) {
+	const form = new FormData();
+	form.append('password', PASSWORD);
+	const res = await worker.fetch(new Request('http://x/login', { method: 'POST', body: form }), env, createExecutionContext());
+	const cookie = res.headers.get('Set-Cookie') || '';
+	const match = cookie.match(/paperfly_session=([^;]+)/);
+	return match ? match[1] : null;
+}
+
+function authedRequest(path, token, opts = {}) {
+	return new Request(`http://x${path}`, {
+		...opts,
+		headers: { ...(opts.headers || {}), Cookie: `paperfly_session=${token}` },
 	});
+}
 
-	it('strips padding =', () => {
-		const result = base64urlEncode(new Uint8Array([0x01]));
-		expect(result).not.toContain('=');
-	});
-
-	it('accepts ArrayBuffer', () => {
-		const buf = new Uint8Array([65, 66, 67]).buffer; // "ABC"
-		const result = base64urlEncode(buf);
-		expect(result).toBe('QUJD');
-	});
-});
-
-// ── convertLogsToArray ────────────────────────────────────────────────────────
-
-describe('convertLogsToArray', () => {
-	it('returns [] for null input', () => {
-		expect(convertLogsToArray(null)).toEqual([]);
-	});
-
-	it('returns [] for non-object inputs', () => {
-		expect(convertLogsToArray('string')).toEqual([]);
-		expect(convertLogsToArray(42)).toEqual([]);
-		expect(convertLogsToArray(undefined)).toEqual([]);
-	});
-
-	it('returns [] for array input', () => {
-		expect(convertLogsToArray([])).toEqual([]);
-		expect(convertLogsToArray([{ timestamp: 1 }])).toEqual([]);
-	});
-
-	it('converts an object to an array with id set to key', () => {
-		const input = {
-			'key-1': { timestamp: '2024-01-01T00:00:00Z', message: 'hello' },
-			'key-2': { timestamp: '2024-01-02T00:00:00Z', message: 'world' },
-		};
-		const result = convertLogsToArray(input);
-		expect(result).toHaveLength(2);
-		const ids = result.map(e => e.id);
-		expect(ids).toContain('key-1');
-		expect(ids).toContain('key-2');
-	});
-
-	it('sorts descending by timestamp (ISO strings)', () => {
-		const input = {
-			a: { timestamp: '2024-01-01T00:00:00Z' },
-			b: { timestamp: '2024-01-03T00:00:00Z' },
-			c: { timestamp: '2024-01-02T00:00:00Z' },
-		};
-		const result = convertLogsToArray(input);
-		expect(result[0].timestamp).toBe('2024-01-03T00:00:00Z');
-		expect(result[1].timestamp).toBe('2024-01-02T00:00:00Z');
-		expect(result[2].timestamp).toBe('2024-01-01T00:00:00Z');
-	});
-
-	it('limits output to 100 entries', () => {
-		const input = {};
-		for (let i = 0; i < 150; i++) {
-			input[`key-${i}`] = { timestamp: i };
-		}
-		const result = convertLogsToArray(input);
-		expect(result).toHaveLength(100);
-	});
-
-	it('keeps the 100 most recent when truncating', () => {
-		const input = {};
-		for (let i = 0; i < 120; i++) {
-			input[`key-${i}`] = { timestamp: i };
-		}
-		const result = convertLogsToArray(input);
-		// All returned entries should have timestamp >= 20 (the top 100 out of 120)
-		const minTs = Math.min(...result.map(e => e.timestamp));
-		expect(minTs).toBeGreaterThanOrEqual(20);
+// ── GET /login ────────────────────────────────────────────────────────────────
+describe('GET /login', () => {
+	it('returns login page HTML', async () => {
+		const res = await worker.fetch(new Request('http://x/login'), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toContain('text/html');
+		const body = await res.text();
+		expect(body).toContain('AUTHENTICATE');
+		expect(body).toContain('PAPERFLY');
+		expect(body).toContain('SECURE ACCESS TERMINAL');
 	});
 });
 
-// ── defaultMetrics ────────────────────────────────────────────────────────────
-
-describe('defaultMetrics', () => {
-	it('returns an object with all expected fields', () => {
-		const m = defaultMetrics();
-		expect(m.machineId).toBe('unknown');
-		expect(m.machineName).toBe('unknown');
-		expect(m.timestamp).toBe(0);
-		expect(m.cpuUsage).toBe(0);
-		expect(m.totalMemory).toBe(0);
-		expect(m.freeMemory).toBe(0);
-		expect(m.usedMemory).toBe(0);
-		expect(m.memoryPercent).toBe(0);
-		expect(m.uptime).toBe(0);
-		expect(m.platform).toBe('unknown');
-		expect(m.nodeVersion).toBe('unknown');
-		expect(m.loadAverage).toEqual([0, 0, 0]);
-		expect(m.lastUpdated).toBe(0);
+// ── POST /login ───────────────────────────────────────────────────────────────
+describe('POST /login', () => {
+	it('redirects to / with cookie on correct password', async () => {
+		const form = new FormData();
+		form.append('password', PASSWORD);
+		const res = await worker.fetch(new Request('http://x/login', { method: 'POST', body: form }), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toBe('/');
+		expect(res.headers.get('Set-Cookie')).toContain('paperfly_session=');
+		expect(res.headers.get('Set-Cookie')).toContain('HttpOnly');
+		expect(res.headers.get('Set-Cookie')).toContain('Secure');
 	});
 
-	it('returns a fresh object each call (no shared reference)', () => {
-		const a = defaultMetrics();
-		const b = defaultMetrics();
-		a.machineId = 'modified';
-		expect(b.machineId).toBe('unknown');
+	it('returns 401 on wrong password', async () => {
+		const form = new FormData();
+		form.append('password', 'wrong-pw');
+		const res = await worker.fetch(new Request('http://x/login', { method: 'POST', body: form }), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(401);
+		const body = await res.text();
+		expect(body).toContain('INVALID CREDENTIALS');
 	});
 });
 
-// ── Worker routing ────────────────────────────────────────────────────────────
+// ── POST /logout ──────────────────────────────────────────────────────────────
+describe('POST /logout', () => {
+	it('clears cookie and redirects to /login', async () => {
+		const token = await getSessionCookie();
+		const res = await worker.fetch(authedRequest('/logout', token, { method: 'POST' }), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toBe('/login');
+		expect(res.headers.get('Set-Cookie')).toContain('Max-Age=0');
+	});
+});
 
-describe('Worker routing', () => {
-	it('returns 500 when required secrets are missing', async () => {
-		const request = new Request('http://example.com/');
-		const ctx = createExecutionContext();
-		// env from cloudflare:test has no secrets set
-		const response = await worker.fetch(request, env, ctx);
-		await waitOnExecutionContext(ctx);
-		expect(response.status).toBe(500);
-		const body = await response.text();
-		expect(body).toContain('Missing secrets');
+// ── Auth gate ─────────────────────────────────────────────────────────────────
+describe('Auth gate', () => {
+	it('redirects unauthenticated GET / to /login', async () => {
+		const spy = mockSupabase();
+		const res = await worker.fetch(new Request('http://x/'), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toBe('/login');
+		spy.mockRestore();
 	});
 
-	it('returns 404 for non-root paths when secrets are present', async () => {
-		const request = new Request('http://example.com/unknown-path');
-		const ctx = createExecutionContext();
-		const fakeEnv = {
-			FIREBASE_PROJECT_ID: 'proj',
-			FIREBASE_CLIENT_EMAIL: 'test@test.iam.gserviceaccount.com',
-			FIREBASE_PRIVATE_KEY: 'fake-key',
-			FIREBASE_DATABASE_URL: 'https://example.firebaseio.com',
-			FIREBASE_MACHINE_ID: 'machine-1',
-		};
-		const response = await worker.fetch(request, fakeEnv, ctx);
-		await waitOnExecutionContext(ctx);
-		expect(response.status).toBe(404);
-		expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
-		const body = await response.text();
-		expect(body).toBe('Not Found');
+	it('returns 401 JSON for unauthenticated /api/data', async () => {
+		const res = await worker.fetch(new Request('http://x/api/data'), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(401);
+		expect((await res.json()).error).toContain('Unauthorized');
+	});
+
+	it('allows access when no DASHBOARD_PASSWORD set (open mode)', async () => {
+		const spy = mockSupabase();
+		const res = await worker.fetch(new Request('http://x/'), NO_AUTH, createExecutionContext());
+		expect(res.status).toBe(200);
+		spy.mockRestore();
+	});
+});
+
+// ── GET / (authenticated) ─────────────────────────────────────────────────────
+describe('GET / (authenticated)', () => {
+	let spy;
+	beforeEach(() => { spy = mockSupabase({ machines: [MACHINE], logs: [LOG] }); });
+	afterEach(() => spy.mockRestore());
+
+	it('returns dashboard HTML with logout button', async () => {
+		const token = await getSessionCookie();
+		const res = await worker.fetch(authedRequest('/', token), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(200);
+		const body = await res.text();
+		expect(body).toContain('PAPERFLY CONTROL');
+		expect(body).toContain('LOGOUT');
+		expect(body).toContain('MyPC');
+		expect(body).toContain('test-tunnel.trycloudflare.com');
+	});
+
+	it('contains auto-refresh interval', async () => {
+		const token = await getSessionCookie();
+		const res = await worker.fetch(authedRequest('/', token), FULL_ENV, createExecutionContext());
+		expect(await res.text()).toContain('30000');
+	});
+});
+
+// ── GET /api/data (authenticated) ────────────────────────────────────────────
+describe('GET /api/data (authenticated)', () => {
+	let spy;
+	beforeEach(() => { spy = mockSupabase({ machines: [MACHINE], logs: [LOG, { ...LOG, id: 'l2', level: 'error' }] }); });
+	afterEach(() => spy.mockRestore());
+
+	it('returns machines, logsByMachine, statsByMachine, timestamp', async () => {
+		const token = await getSessionCookie();
+		const res = await worker.fetch(authedRequest('/api/data', token), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(200);
+		const data = await res.json();
+		expect(data).toHaveProperty('machines');
+		expect(data).toHaveProperty('logsByMachine');
+		expect(data).toHaveProperty('statsByMachine');
+		expect(data).toHaveProperty('timestamp');
+		expect(data.machines[0].tunnel_url).toBe('https://test-tunnel.trycloudflare.com');
+	});
+
+	it('stats byLevel counts errors correctly', async () => {
+		const token = await getSessionCookie();
+		const res = await worker.fetch(authedRequest('/api/data', token), FULL_ENV, createExecutionContext());
+		const data = await res.json();
+		expect(data.statsByMachine['abc'].byLevel.error).toBe(1);
+		expect(data.statsByMachine['abc'].total).toBe(2);
+	});
+
+	it('returns 500 when supabase not configured', async () => {
+		spy.mockRestore();
+		const token = await getSessionCookie(NO_CREDS);
+		const res = await worker.fetch(authedRequest('/api/data', token), NO_CREDS, createExecutionContext());
+		expect(res.status).toBe(500);
+	});
+});
+
+// ── 404 ───────────────────────────────────────────────────────────────────────
+describe('Unknown routes', () => {
+	it('returns 404', async () => {
+		const res = await worker.fetch(new Request('http://x/unknown'), FULL_ENV, createExecutionContext());
+		expect(res.status).toBe(404);
 	});
 });

@@ -3,3 +3,10 @@ node_modules/
 *.md
 *readme*
 *README*
+
+# Secrets — never commit these
+.env
+.env.local
+.env.*.local
+firebase-credentials.json
+firebase-credentials*.json
