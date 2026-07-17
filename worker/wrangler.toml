@@ -1,0 +1,11 @@
+name = "paperfly-url"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "URL_STORE"
+id = "802e1b3d19df4d7290f62b4fb44451f2"
+
+# Required secrets — set with: wrangler secret put <NAME>
+#   AUTH_USERNAME  — username for the web dashboard login
+#   AUTH_PASSWORD  — password for the web dashboard login

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paperfly - Login</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+
+    <h1>Paperfly</h1>
+    <p class="login-subtitle">Enter PIN to connect</p>
+    <form id="login-form">
+      <div class="pin-input-wrapper">
+        <input type="password" id="pin-input" maxlength="6" pattern="[0-9]*" inputmode="numeric" placeholder="••••••" autofocus autocomplete="off">
+      </div>
+      <div id="error-message" class="error-message"></div>
+      <button type="submit" class="btn btn-primary btn-full"></button>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('login-form');
+    const pinInput = document.getElementById('pin-input');
+    const errorMsg = document.getElementById('error-message');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.textContent = '';
+      const pin = pinInput.value.trim();
+      if (!pin) return;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          window.location.href = '/';
+        } else {
+          errorMsg.textContent = data.error || data.message || 'Invalid PIN';
+          pinInput.value = '';
+          pinInput.focus();
+        }
+      } catch (err) {
+        errorMsg.textContent = 'Connection failed. Try again.';
+      }
+    });
+
+    pinInput.addEventListener('input', () => {
+      pinInput.value = pinInput.value.replace(/[^0-9]/g, '');
+    });
+  </script>
+</body>
+</html>

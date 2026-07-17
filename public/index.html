@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Paperfly</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+</head>
+<body>
+  <div id="privacy-banner" class="privacy-banner hidden">
+    <i class="fas fa-eye-slash"></i> Privacy Mode Active — Host screen is blacked out
+  </div>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="screen"><i class="fas fa-desktop"></i><span class="tab-label"> Screen</span></button>
+    <button class="tab" data-tab="files"><i class="fas fa-folder"></i><span class="tab-label"> Files</span></button>
+    <button class="tab" data-tab="terminal"><i class="fas fa-terminal"></i><span class="tab-label"> Terminal</span></button>
+    <button class="tab" data-tab="clipboard"><i class="fas fa-clipboard"></i><span class="tab-label"> Clipboard</span></button>
+    <div class="tabs-spacer"></div>
+    <button class="tab tab-logout" id="logout-btn"><i class="fas fa-sign-out-alt"></i><span class="tab-label"> Logout</span></button>
+  </nav>
+
+  <!-- Screen Tab -->
+  <div id="screen-tab" class="tab-content active">
+    <div class="controls">
+      <button id="start-stream-btn" class="btn btn-sm btn-success"><i class="fas fa-play"></i> Start</button>
+      <button id="stop-stream-btn" class="btn btn-sm btn-danger" disabled><i class="fas fa-stop"></i> Stop</button>
+      <button id="fullscreen-btn" class="btn btn-sm"><i class="fas fa-expand"></i></button>
+      <button id="screenshot-btn" class="btn btn-sm"><i class="fas fa-camera"></i></button>
+
+      <select id="fps-select" class="control-select">
+        <option value="15">15 FPS</option>
+        <option value="24">24 FPS</option>
+        <option value="30" selected>30 FPS</option>
+        <option value="60">60 FPS</option>
+      </select>
+      <select id="quality-select" class="control-select">
+        <option value="40">Low</option>
+        <option value="60" selected>Medium</option>
+        <option value="80">High</option>
+        <option value="95">Ultra</option>
+      </select>
+      <select id="stream-mode-select" class="control-select">
+        <option value="efficient" selected>Efficient</option>
+        <option value="hd">HD Mode</option>
+      </select>
+      <button id="privacy-toggle-btn" class="btn btn-sm btn-privacy"><i class="fas fa-eye-slash"></i> Privacy</button>
+    </div>
+    <div class="screen-container">
+      <canvas id="screen-canvas" tabindex="0"></canvas>
+      <div id="screen-placeholder" class="screen-placeholder">
+        <i class="fas fa-desktop"></i>
+        <p>Click Start to begin streaming</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Files Tab -->
+  <div id="files-tab" class="tab-content">
+    <div class="controls">
+      <div id="drives-list" class="drives-list"></div>
+      <button id="upload-btn" class="btn btn-sm btn-success"><i class="fas fa-upload"></i> Upload</button>
+      <button id="new-folder-btn" class="btn btn-sm"><i class="fas fa-folder-plus"></i> New Folder</button>
+      <input type="file" id="file-upload-input" multiple hidden>
+    </div>
+    <div id="breadcrumb" class="breadcrumb"></div>
+    <div id="file-list" class="file-list"></div>
+    <div id="upload-progress" class="upload-progress hidden">
+      <div class="progress-bar"><div class="progress-fill" id="upload-progress-fill"></div></div>
+      <span id="upload-progress-text">0%</span>
+    </div>
+    <div id="drop-zone" class="drop-zone hidden">
+      <i class="fas fa-cloud-upload-alt"></i>
+      <p>Drop files here to upload</p>
+    </div>
+  </div>
+
+  <!-- Terminal Tab -->
+  <div id="terminal-tab" class="tab-content">
+    <div id="terminal-container"></div>
+  </div>
+
+  <!-- Clipboard Tab -->
+  <div id="clipboard-tab" class="tab-content">
+    <div class="clipboard-panel">
+      <div class="controls">
+        <button id="clipboard-get-btn" class="btn btn-sm"><i class="fas fa-download"></i> Get Remote</button>
+        <button id="clipboard-send-btn" class="btn btn-sm btn-success"><i class="fas fa-upload"></i> Send to Remote</button>
+        <button id="clipboard-copy-local-btn" class="btn btn-sm"><i class="fas fa-copy"></i> Copy to Local</button>
+        <button id="clipboard-paste-local-btn" class="btn btn-sm"><i class="fas fa-paste"></i> Paste from Local</button>
+        <label class="toggle-label">
+          <input type="checkbox" id="clipboard-auto-sync"> Auto-sync
+        </label>
+      </div>
+      <textarea id="clipboard-text" placeholder="Clipboard content will appear here..."></textarea>
+    </div>
+  </div>
+
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span id="connection-status"><i class="fas fa-circle"></i> Connecting...</span>
+    <span id="latency-display">-- ms</span>
+    <span id="tunnel-url" class="tunnel-url"></span>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/screen.js"></script>
+  <script src="/js/files.js"></script>
+  <script src="/js/terminal.js"></script>
+  <script src="/js/clipboard.js"></script>
+  <script src="/js/mobile.js"></script>
+</body>
+</html>
