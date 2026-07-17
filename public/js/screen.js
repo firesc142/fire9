@@ -1,5 +1,5 @@
 // Screen viewer and remote control
-(function() {
+(function () {
   const canvas = document.getElementById('screen-canvas');
   const ctx = canvas.getContext('2d');
   const placeholder = document.getElementById('screen-placeholder');
@@ -108,7 +108,7 @@
   // Monitor selection
   socket.emit('get-monitors');
   socket.on('monitors-list', (monitors) => {
-    if (!monitorSelect) return; // element removed from UI
+    if (!monitorSelect) return;
     monitorSelect.innerHTML = '';
     monitors.forEach((m, i) => {
       const opt = document.createElement('option');
@@ -209,7 +209,6 @@
       const tileCount = view.getUint16(12, true);
       const isKeyframe = msgType === 0x02;
 
-      // Detect frame gaps — request keyframe if needed
       if (lastFrameSeq > 0 && frameSeq > lastFrameSeq + 1 && !isKeyframe) {
         socket.emit('request-keyframe');
       }
@@ -217,7 +216,6 @@
 
       ensureCanvasSize(width, height, isKeyframe);
 
-      // Parse tile headers
       const tiles = [];
       let offset = HEADER_SIZE;
       for (let i = 0; i < tileCount; i++) {
@@ -229,7 +227,6 @@
       }
 
       if (format === FMT_WEBP) {
-        // Decode each WebP tile asynchronously, then blit at its position.
         for (const tile of tiles) {
           const data = bytes.slice(offset, offset + tile.dataLength);
           offset += tile.dataLength;
@@ -239,7 +236,7 @@
           createImageBitmap(blob).then((bmp) => {
             ctx.drawImage(bmp, tileX, tileY);
             bmp.close && bmp.close();
-          }).catch(() => {});
+          }).catch(() => { });
         }
       } else {
         for (const tile of tiles) {
@@ -254,56 +251,126 @@
     }
   });
 
-  // Mouse events
+  // ── Coordinate mapping ──────────────────────────────────────────────────────
+  // Converts a browser event position to normalised coordinates (0.0 – 1.0)
+  // relative to the actual rendered screen content on the canvas.
+  //
+  // Problem being solved:
+  //   The canvas intrinsic size = remote desktop resolution (e.g. 1920×1080).
+  //   The canvas CSS display size = whatever the client's viewport gives it.
+  //   Dividing raw clientX/Y by the CSS size is WRONG when the two don't
+  //   match — the click lands in the wrong place on the remote desktop.
+  //
+  // Solution (industry-standard normalised-coordinate approach):
+  //   1. Compute how the canvas content is actually rendered inside its CSS box
+  //      (letterboxing / pillarboxing, same as CSS object-fit:contain).
+  //   2. Reject clicks that fall in the black-bar areas.
+  //   3. Normalise to 0–1 over the rendered content area only.
+  //   4. Server maps (nx, ny) → (nx * desktopW, ny * desktopH) in logical px.
+  //
+  // This is resolution-independent: the same normalised point maps correctly
+  // on a 1366×768, 1920×1080, or 4K remote desktop.
+  function clientToNormalized(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+
+    // Intrinsic size = remote desktop resolution (set by incoming frames)
+    const srcW = canvas.width || screenWidth;
+    const srcH = canvas.height || screenHeight;
+    if (!srcW || !srcH) return null;
+
+    // CSS display size (what the browser actually shows)
+    const dispW = rect.width;
+    const dispH = rect.height;
+
+    const srcAspect = srcW / srcH;
+    const dispAspect = dispW / dispH;
+
+    let renderW, renderH, offsetX, offsetY;
+
+    if (Math.abs(dispAspect - srcAspect) < 0.01) {
+      // Aspects match — content fills the entire CSS box
+      renderW = dispW; renderH = dispH;
+      offsetX = 0; offsetY = 0;
+    } else if (dispAspect > srcAspect) {
+      // Display is wider than content → pillarboxing (bars on left & right)
+      renderH = dispH;
+      renderW = dispH * srcAspect;
+      offsetX = (dispW - renderW) / 2;
+      offsetY = 0;
+    } else {
+      // Display is taller than content → letterboxing (bars top & bottom)
+      renderW = dispW;
+      renderH = dispW / srcAspect;
+      offsetX = 0;
+      offsetY = (dispH - renderH) / 2;
+    }
+
+    const relX = clientX - rect.left;
+    const relY = clientY - rect.top;
+
+    // Discard clicks that land in the black-bar areas
+    if (relX < offsetX || relX > offsetX + renderW ||
+      relY < offsetY || relY > offsetY + renderH) {
+      return null;
+    }
+
+    return {
+      x: (relX - offsetX) / renderW,   // 0.0 = left edge,  1.0 = right edge
+      y: (relY - offsetY) / renderH,   // 0.0 = top edge,   1.0 = bottom edge
+    };
+  }
+
+  function touchToNormalized(touch) {
+    return clientToNormalized(touch.clientX, touch.clientY);
+  }
+
+  // ── Mouse events ────────────────────────────────────────────────────────────
+
   canvas.addEventListener('mousemove', (e) => {
     if (!streaming) return;
     const now = Date.now();
     if (now - lastMouseEmit < MOUSE_THROTTLE) return;
     lastMouseEmit = now;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    socket.emit('mouse-move', { x, y });
+    const pos = clientToNormalized(e.clientX, e.clientY);
+    if (!pos) return;
 
-    if (isDragging) {
-      socket.emit('mouse-drag', { x, y, dragging: true });
-    }
+    socket.emit('mouse-move', pos);
+    if (isDragging) socket.emit('mouse-drag', { ...pos, dragging: true });
   });
 
   canvas.addEventListener('mousedown', (e) => {
     if (!streaming) return;
     e.preventDefault();
     canvas.focus();
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    const button = ['left', 'middle', 'right'][e.button] || 'left';
 
+    const pos = clientToNormalized(e.clientX, e.clientY);
+    if (!pos) return;
+
+    const button = ['left', 'middle', 'right'][e.button] || 'left';
     isDragging = true;
-    dragStartPos = { x, y };
-    socket.emit('mouse-down', { x, y, button });
+    dragStartPos = pos;
+    socket.emit('mouse-down', { ...pos, button });
   });
 
   canvas.addEventListener('mouseup', (e) => {
     if (!streaming) return;
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    const button = ['left', 'middle', 'right'][e.button] || 'left';
 
+    const pos = clientToNormalized(e.clientX, e.clientY);
+    const button = ['left', 'middle', 'right'][e.button] || 'left';
     isDragging = false;
-    socket.emit('mouse-up', { x, y, button });
+    // Fall back to last known position if mouse was released outside canvas
+    socket.emit('mouse-up', { ...(pos || dragStartPos || { x: 0, y: 0 }), button });
   });
 
   canvas.addEventListener('dblclick', (e) => {
     if (!streaming) return;
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    socket.emit('mouse-click', { x, y, button: 'left', type: 'double' });
+
+    const pos = clientToNormalized(e.clientX, e.clientY);
+    if (!pos) return;
+    socket.emit('mouse-click', { ...pos, button: 'left', type: 'double' });
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -314,7 +381,8 @@
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // Keyboard events
+  // ── Keyboard events ──────────────────────────────────────────────────────────
+
   canvas.addEventListener('keydown', (e) => {
     if (!streaming) return;
     e.preventDefault();
@@ -332,7 +400,8 @@
     socket.emit('key-release', { key: e.key, code: e.code });
   });
 
-  // Touch support for mobile
+  // ── Touch support (mobile) ───────────────────────────────────────────────────
+
   let touchStartTime = 0;
   let touchStartPos = null;
   let lastTapTime = 0;
@@ -342,23 +411,17 @@
     if (!streaming) return;
     e.preventDefault();
     const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    touchStartPos = {
-      x: (touch.clientX - rect.left) / rect.width,
-      y: (touch.clientY - rect.top) / rect.height
-    };
+    touchStartPos = touchToNormalized(touch);
     touchStartTime = Date.now();
 
     if (e.touches.length === 2) {
-      // Two finger tap = right click
-      socket.emit('mouse-click', { ...touchStartPos, button: 'right', type: 'single' });
+      if (touchStartPos) socket.emit('mouse-click', { ...touchStartPos, button: 'right', type: 'single' });
       return;
     }
 
-    // Long press detection for drag
     touchTimeout = setTimeout(() => {
       isDragging = true;
-      socket.emit('mouse-down', { ...touchStartPos, button: 'left' });
+      if (touchStartPos) socket.emit('mouse-down', { ...touchStartPos, button: 'left' });
     }, 500);
   }, { passive: false });
 
@@ -366,11 +429,8 @@
     if (!streaming) return;
     e.preventDefault();
     if (touchTimeout) { clearTimeout(touchTimeout); touchTimeout = null; }
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    const x = (touch.clientX - rect.left) / rect.width;
-    const y = (touch.clientY - rect.top) / rect.height;
-    socket.emit('mouse-move', { x, y });
+    const pos = touchToNormalized(e.touches[0]);
+    if (pos) socket.emit('mouse-move', pos);
   }, { passive: false });
 
   canvas.addEventListener('touchend', (e) => {
@@ -378,17 +438,16 @@
     e.preventDefault();
     if (touchTimeout) { clearTimeout(touchTimeout); touchTimeout = null; }
 
-    const touchDuration = Date.now() - touchStartTime;
+    const duration = Date.now() - touchStartTime;
     const now = Date.now();
 
     if (isDragging) {
       isDragging = false;
-      socket.emit('mouse-up', { ...touchStartPos, button: 'left' });
+      if (touchStartPos) socket.emit('mouse-up', { ...touchStartPos, button: 'left' });
       return;
     }
 
-    if (touchDuration < 300 && touchStartPos) {
-      // Check for double tap
+    if (duration < 300 && touchStartPos) {
       if (now - lastTapTime < 300) {
         socket.emit('mouse-click', { ...touchStartPos, button: 'left', type: 'double' });
       } else {
@@ -397,4 +456,5 @@
       lastTapTime = now;
     }
   }, { passive: false });
+
 })();
