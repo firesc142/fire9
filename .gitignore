@@ -10,3 +10,11 @@ node_modules/
 .env.*.local
 firebase-credentials.json
 firebase-credentials*.json
+
+# AI/editor folders
+.claude/
+.kiro/
+.vscode/
+
+# Worker folder
+worker/
