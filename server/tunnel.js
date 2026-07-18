@@ -229,25 +229,25 @@ async function checkForRestart() {
   const config = getConfig();
   const workerUrl = config.urlWorker?.endpoint;
   const apiKey = config.urlWorker?.apiKey;
-  if (!workerUrl || !apiKey) return;
-  // Already in countdown — don't stack another
-  if (restartCountdownTimer) return;
+  const machineId = config.machineId;
+  if (!workerUrl || !apiKey || !machineId) return;
 
   try {
     const baseUrl = workerUrl.replace(/\/api\/url$/, '');
-    const res = await fetch(`${baseUrl}/api/restart`, {
+    const res = await fetch(`${baseUrl}/api/restart?machineId=${encodeURIComponent(machineId)}`, {
       headers: { 'X-API-Key': apiKey }
     });
     if (!res.ok) return;
     const data = await res.json();
     if (data.restart === true) {
-      log(CATEGORIES.SERVER, 'Global restart toggle is ON — restarting in 30s...', LEVELS.INFO);
+      log(CATEGORIES.SERVER, 'Remote restart command received — restarting in 30s...', LEVELS.INFO);
       let countdown = 30;
       const tick = () => {
         log(CATEGORIES.SERVER, `Restarting in ${countdown}s...`, LEVELS.INFO);
         countdown--;
         if (countdown <= 0) {
           log(CATEGORIES.SERVER, 'Restarting now.', LEVELS.INFO);
+          // Give the log a moment to flush then exit — tray.js will restart the server
           setTimeout(() => process.exit(0), 500);
         } else {
           restartCountdownTimer = setTimeout(tick, 1000);

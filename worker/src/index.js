@@ -117,6 +117,7 @@ function dashboardPage(machines) {
         </div>
         <div class="machine-url">${m.url ? '<a href="' + m.url + '" target="_blank">' + m.url + '</a>' : '<span class="no-url">' + (m.status === 'connecting' ? 'Establishing tunnel...' : 'No URL') + '</span>'}</div>
         <div class="machine-meta">${statusLabel} &mdash; ${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : 'never'}</div>
+        <button class="btn-sm btn-restart" id="restart-${m.id}" onclick="toggleRestart('${m.id}')">&#x21ba; RESTART</button>
         <button class="btn-sm" onclick="deleteMachine('${m.id}')">Remove</button>
       </div>`;
     }).join('');
@@ -150,7 +151,7 @@ function dashboardPage(machines) {
     .section-title { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
     .section-count { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; color: var(--accent-orange); }
     .machine-list { padding: 0; }
-    .machine { display: grid; grid-template-columns: 30px 1fr 1fr auto auto; align-items: center; gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-dim); }
+    .machine { display: grid; grid-template-columns: 30px 1fr 1fr auto auto auto; align-items: center; gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-dim); }
     .machine:last-child { border-bottom: none; }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .dot.online { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
@@ -169,7 +170,8 @@ function dashboardPage(machines) {
     .btn-refresh:hover { background: rgba(232,97,26,0.08); border-color: var(--accent-orange); color: var(--accent-orange); }
     .btn-restart { border-color: var(--accent-blue); color: var(--accent-blue); }
     .btn-restart:hover { background: rgba(74,158,255,0.08); }
-    .btn-restart.armed { border-color: #ffa726; color: #ffa726; background: rgba(255,167,38,0.08); animation: pulse 1s infinite; }    .empty { padding: 2rem 1.5rem; font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: var(--text-dim); text-align: center; }
+    .btn-restart.armed { border-color: #ffa726; color: #ffa726; background: rgba(255,167,38,0.08); animation: pulse 1s infinite; }
+    .empty { padding: 2rem 1.5rem; font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: var(--text-dim); text-align: center; }
     .pin-section { padding: 1.5rem; }
     .pin-form { display: flex; gap: 0.8rem; align-items: center; }
     .pin-input { background: var(--bg-primary); border: 1px solid var(--border-bright); padding: 0.5rem 0.8rem; color: var(--text-primary); font-family: 'Share Tech Mono', monospace; font-size: 0.8rem; width: 120px; outline: none; }
@@ -205,19 +207,6 @@ function dashboardPage(machines) {
     </div>
 
     <div class="section">
-      <div class="section-header"><span class="section-title">Global Controls</span></div>
-      <div class="pin-section" style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;">
-        <div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:0.65rem;color:var(--text-dim);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.5rem;">Restart All Machines</div>
-          <div style="display:flex;align-items:center;gap:0.8rem;">
-            <button id="restartToggleBtn" class="btn-sm" onclick="toggleGlobalRestart()" style="min-width:120px;">&#x21ba; RESTART: OFF</button>
-            <span style="font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--text-dim);" id="restartStatus">Toggle ON — all connected machines will restart within 30s</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
       <div class="section-header"><span class="section-title">Access PIN</span></div>
       <div class="pin-section">
         <form class="pin-form" id="pinForm">
@@ -249,45 +238,38 @@ function dashboardPage(machines) {
       setTimeout(function() { toast.remove(); }, 3000);
     }
 
-    // Global restart toggle state
-    var restartOn = false;
+    // Track which machines have restart armed
+    var armedRestarts = {};
 
-    async function toggleGlobalRestart() {
-      var btn = document.getElementById('restartToggleBtn');
-      var status = document.getElementById('restartStatus');
-      btn.disabled = true;
-      if (!restartOn) {
-        // Turn ON — all machines will restart within 30s
-        var res = await fetch('/api/restart', { method: 'POST' });
-        if (res.ok) {
-          restartOn = true;
-          btn.textContent = '\u21ba RESTART: ON';
-          btn.style.borderColor = '#ffa726';
-          btn.style.color = '#ffa726';
-          btn.style.animation = 'pulse 1s infinite';
-          status.textContent = 'All machines will restart within 30s. Turn OFF when done.';
-          status.style.color = '#ffa726';
-          showToast('Restart toggle ON — all machines restarting', 'success');
-        } else {
-          showToast('Failed to set restart toggle', 'error');
-        }
+    async function toggleRestart(id) {
+      var btn = document.getElementById('restart-' + id);
+      if (armedRestarts[id]) {
+        // Cancel restart
+        await fetch('/api/machines/' + id + '/restart', { method: 'DELETE' });
+        delete armedRestarts[id];
+        btn.classList.remove('armed');
+        btn.textContent = '\u21ba RESTART';
+        showToast('Restart cancelled', 'success');
       } else {
-        // Turn OFF
-        var res = await fetch('/api/restart', { method: 'DELETE' });
+        // Arm restart — client will restart within 30s
+        var res = await fetch('/api/machines/' + id + '/restart', { method: 'POST' });
         if (res.ok) {
-          restartOn = false;
-          btn.textContent = '\u21ba RESTART: OFF';
-          btn.style.borderColor = '';
-          btn.style.color = '';
-          btn.style.animation = '';
-          status.textContent = 'Toggle ON \u2014 all connected machines will restart within 30s';
-          status.style.color = '';
-          showToast('Restart toggle OFF', 'success');
+          armedRestarts[id] = true;
+          btn.classList.add('armed');
+          btn.textContent = '\u23f3 RESTARTING...';
+          showToast('Restart command sent — client will restart in ~30s', 'success');
+          // Auto-clear the armed state after 60s (client should have restarted by then)
+          setTimeout(function() {
+            if (armedRestarts[id]) {
+              delete armedRestarts[id];
+              btn.classList.remove('armed');
+              btn.textContent = '\u21ba RESTART';
+            }
+          }, 60000);
         } else {
-          showToast('Failed to clear restart toggle', 'error');
+          showToast('Failed to send restart command', 'error');
         }
       }
-      btn.disabled = false;
     }
 
     async function deleteMachine(id) {
@@ -316,6 +298,7 @@ function dashboardPage(machines) {
           '<div class="machine-info"><div class="machine-name">' + m.name + '</div><div class="machine-id">' + m.id.slice(0,8) + '</div></div>' +
           '<div class="machine-url">' + urlHtml + '</div>' +
           '<div class="machine-meta">' + meta + '</div>' +
+          '<button class="btn-sm btn-restart" id="restart-' + m.id + '" onclick="toggleRestart(\\x27' + m.id + '\\x27)">\u21ba RESTART</button>' +
           '<button class="btn-sm" onclick="deleteMachine(\\x27' + m.id + '\\x27)">Remove</button>' +
         '</div>';
       }).join('');
@@ -481,44 +464,51 @@ export default {
       });
     }
 
-    // --- API: Global restart toggle (ON) — affects ALL machines ---
-    if (request.method === 'POST' && url.pathname === '/api/restart') {
+    // --- API: Set restart flag for a machine ---
+    if (request.method === 'POST' && url.pathname.startsWith('/api/machines/') && url.pathname.endsWith('/restart')) {
       const hasSession = await isValidSession(request, env);
       if (!hasSession && !checkApiKey(request, env)) {
         return new Response('Unauthorized', { status: 401 });
       }
-      await env.URL_STORE.put('global_restart', '1');
-      return new Response(JSON.stringify({ success: true, restart: true }), {
+      const machineId = url.pathname.replace('/api/machines/', '').replace('/restart', '');
+      await env.URL_STORE.put(`restart:${machineId}`, '1', { expirationTtl: 300 });
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() }
       });
     }
 
-    // --- API: Global restart toggle (OFF) ---
-    if (request.method === 'DELETE' && url.pathname === '/api/restart') {
+    // --- API: Cancel restart flag for a machine ---
+    if (request.method === 'DELETE' && url.pathname.startsWith('/api/machines/') && url.pathname.endsWith('/restart')) {
       const hasSession = await isValidSession(request, env);
       if (!hasSession && !checkApiKey(request, env)) {
         return new Response('Unauthorized', { status: 401 });
       }
-      await env.URL_STORE.delete('global_restart');
-      return new Response(JSON.stringify({ success: true, restart: false }), {
+      const machineId = url.pathname.replace('/api/machines/', '').replace('/restart', '');
+      await env.URL_STORE.delete(`restart:${machineId}`);
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() }
       });
     }
 
-    // --- API: Client polls global restart toggle ---
-    // Each machine polls this. If toggle is ON, they restart.
-    // Toggle stays ON so ALL machines (not just the first) get the command.
-    // Admin must manually turn it OFF via the dashboard.
+    // --- API: Client polls for restart command ---
     if (request.method === 'GET' && url.pathname === '/api/restart') {
       if (!checkApiKey(request, env)) {
         return new Response('Forbidden', { status: 403 });
       }
-      const flag = await env.URL_STORE.get('global_restart');
-      return new Response(JSON.stringify({ restart: flag === '1' }), {
+      const machineId = url.searchParams.get('machineId');
+      if (!machineId) return new Response('Missing machineId', { status: 400 });
+      const flag = await env.URL_STORE.get(`restart:${machineId}`);
+      if (flag === '1') {
+        // Clear immediately so client only gets it once
+        await env.URL_STORE.delete(`restart:${machineId}`);
+        return new Response(JSON.stringify({ restart: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+        });
+      }
+      return new Response(JSON.stringify({ restart: false }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() }
       });
     }
-
 
 
     if (request.method === 'GET' && url.pathname === '/api/pin') {
