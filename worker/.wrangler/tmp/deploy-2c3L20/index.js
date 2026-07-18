@@ -1,36 +1,41 @@
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
+
+// src/index.js
 function corsHeaders() {
   return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-API-Key'
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-API-Key"
   };
 }
-
+__name(corsHeaders, "corsHeaders");
 function checkApiKey(request, env) {
-  const key = request.headers.get('X-API-Key');
+  const key = request.headers.get("X-API-Key");
   return key && key === env.API_KEY;
 }
-
+__name(checkApiKey, "checkApiKey");
 async function createSessionToken(env) {
   const token = crypto.randomUUID();
-  await env.URL_STORE.put(`session:${token}`, 'valid', { expirationTtl: 86400 });
+  await env.URL_STORE.put(`session:${token}`, "valid", { expirationTtl: 86400 });
   return token;
 }
-
+__name(createSessionToken, "createSessionToken");
 async function isValidSession(request, env) {
-  const cookie = request.headers.get('Cookie') || '';
+  const cookie = request.headers.get("Cookie") || "";
   const match = cookie.match(/session=([^;]+)/);
   if (!match) return false;
   const val = await env.URL_STORE.get(`session:${match[1]}`);
-  return val === 'valid';
+  return val === "valid";
 }
-
+__name(isValidSession, "isValidSession");
 async function getMachines(env) {
   let index = [];
   try {
-    const raw = await env.URL_STORE.get('machines_index');
+    const raw = await env.URL_STORE.get("machines_index");
     if (raw) index = JSON.parse(raw);
-  } catch { }
+  } catch {
+  }
   const machines = [];
   const now = Date.now();
   for (const id of index) {
@@ -39,21 +44,22 @@ async function getMachines(env) {
     try {
       const m = JSON.parse(raw);
       const lastSeen = m.updatedAt ? new Date(m.updatedAt).getTime() : 0;
-      const online = (now - lastSeen) < 5 * 60 * 1000;
+      const online = now - lastSeen < 5 * 60 * 1e3;
       machines.push({
         id,
-        name: m.name || 'Unknown',
+        name: m.name || "Unknown",
         url: m.url || null,
         updatedAt: m.updatedAt,
         online,
-        status: online ? (m.status || 'online') : 'offline'
+        status: online ? m.status || "online" : "offline"
       });
-    } catch { }
+    } catch {
+    }
   }
   return machines;
 }
-
-function loginPage(error = '') {
+__name(getMachines, "getMachines");
+function loginPage(error = "") {
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -91,7 +97,7 @@ function loginPage(error = '') {
       <div><div class="title">Paperfly</div><div class="subtitle">Remote Desktop Control Panel</div></div>
     </div>
     <form class="form-group" method="POST" action="/login">
-      ${error ? '<div class="error">' + error + '</div>' : ''}
+      ${error ? '<div class="error">' + error + "</div>" : ""}
       <div class="field"><label class="label">Username</label><input class="input" type="text" name="username" required autofocus></div>
       <div class="field"><label class="label">Password</label><input class="input" type="password" name="password" required></div>
       <button type="submit" class="btn">Sign In</button>
@@ -99,28 +105,25 @@ function loginPage(error = '') {
   </div>
 </body>
 </html>`;
-  return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
-
+__name(loginPage, "loginPage");
 function dashboardPage(machines) {
-  const machineRows = machines.length === 0
-    ? '<p class="empty">No machines registered yet. Install Paperfly on a PC to get started.</p>'
-    : machines.map(m => {
-      const statusClass = m.status === 'connecting' ? 'connecting' : (m.online ? 'online' : 'offline');
-      const statusLabel = m.status === 'connecting' ? 'CONNECTING' : (m.online ? 'ONLINE' : 'OFFLINE');
-      return `
+  const machineRows = machines.length === 0 ? '<p class="empty">No machines registered yet. Install Paperfly on a PC to get started.</p>' : machines.map((m) => {
+    const statusClass = m.status === "connecting" ? "connecting" : m.online ? "online" : "offline";
+    const statusLabel = m.status === "connecting" ? "CONNECTING" : m.online ? "ONLINE" : "OFFLINE";
+    return `
       <div class="machine" id="machine-${m.id}">
         <div class="machine-status"><span class="dot ${statusClass}"></span></div>
         <div class="machine-info">
           <div class="machine-name">${m.name}</div>
           <div class="machine-id">${m.id.slice(0, 8)}</div>
         </div>
-        <div class="machine-url">${m.url ? '<a href="' + m.url + '" target="_blank">' + m.url + '</a>' : '<span class="no-url">' + (m.status === 'connecting' ? 'Establishing tunnel...' : 'No URL') + '</span>'}</div>
-        <div class="machine-meta">${statusLabel} &mdash; ${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : 'never'}</div>
+        <div class="machine-url">${m.url ? '<a href="' + m.url + '" target="_blank">' + m.url + "</a>" : '<span class="no-url">' + (m.status === "connecting" ? "Establishing tunnel..." : "No URL") + "</span>"}</div>
+        <div class="machine-meta">${statusLabel} &mdash; ${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : "never"}</div>
         <button class="btn-sm" onclick="deleteMachine('${m.id}')">Remove</button>
       </div>`;
-    }).join('');
-
+  }).join("");
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -295,210 +298,184 @@ function dashboardPage(machines) {
       else showToast('Failed to update PIN', 'error');
       document.getElementById('pinInput').value = '';
     });
-  </script>
+  <\/script>
 </body>
 </html>`;
-  return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
-
-export default {
+__name(dashboardPage, "dashboardPage");
+var index_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
-
-    if (request.method === 'OPTIONS') {
+    if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders() });
     }
-
-    // --- API: Push URL (with machine identity) ---
-    if (request.method === 'POST' && url.pathname === '/api/url') {
+    if (request.method === "POST" && url.pathname === "/api/url") {
       if (!checkApiKey(request, env)) {
-        return new Response('Forbidden', { status: 403 });
+        return new Response("Forbidden", { status: 403 });
       }
       const body = await request.json();
       const tunnelUrl = body.url;
       const machineId = body.machineId;
-      const machineName = body.machineName || 'Unknown';
-      const status = body.status || 'online';
-
+      const machineName = body.machineName || "Unknown";
+      const status = body.status || "online";
       if (!machineId && !tunnelUrl) {
-        return new Response('Missing machineId or url field', { status: 400 });
+        return new Response("Missing machineId or url field", { status: 400 });
       }
-
       if (machineId) {
-        // Single KV write per machine (consolidates 4 separate puts into 1)
         const machineData = {
           url: tunnelUrl || null,
           name: machineName,
-          updatedAt: new Date().toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
           status
         };
         await env.URL_STORE.put(`machine:${machineId}`, JSON.stringify(machineData));
-
         let index = [];
         try {
-          const raw = await env.URL_STORE.get('machines_index');
+          const raw = await env.URL_STORE.get("machines_index");
           if (raw) index = JSON.parse(raw);
-        } catch { }
+        } catch {
+        }
         if (!index.includes(machineId)) {
           index.push(machineId);
-          await env.URL_STORE.put('machines_index', JSON.stringify(index));
+          await env.URL_STORE.put("machines_index", JSON.stringify(index));
         }
       }
-
-      // Backward compat: store the latest URL flat
       if (tunnelUrl) {
-        await env.URL_STORE.put('tunnel_url', tunnelUrl);
+        await env.URL_STORE.put("tunnel_url", tunnelUrl);
       }
-
       return new Response(JSON.stringify({ success: true }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
       });
     }
-
-    // --- API: Machine going offline ---
-    if (request.method === 'POST' && url.pathname === '/api/offline') {
+    if (request.method === "POST" && url.pathname === "/api/offline") {
       if (!checkApiKey(request, env)) {
-        return new Response('Forbidden', { status: 403 });
+        return new Response("Forbidden", { status: 403 });
       }
       const body = await request.json();
       const machineId = body.machineId;
       if (machineId) {
-        const machineData = { url: null, name: 'Unknown', updatedAt: '2000-01-01T00:00:00.000Z', status: 'offline' };
-        // Preserve machine name from existing data
+        const machineData = { url: null, name: "Unknown", updatedAt: "2000-01-01T00:00:00.000Z", status: "offline" };
         try {
           const raw = await env.URL_STORE.get(`machine:${machineId}`);
           if (raw) {
             const existing = JSON.parse(raw);
-            machineData.name = existing.name || 'Unknown';
+            machineData.name = existing.name || "Unknown";
           }
-        } catch { }
+        } catch {
+        }
         await env.URL_STORE.put(`machine:${machineId}`, JSON.stringify(machineData));
       }
       return new Response(JSON.stringify({ success: true }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
       });
     }
-
-    // --- API: Get URL (legacy single-machine) ---
-    if (request.method === 'GET' && url.pathname === '/api/url') {
+    if (request.method === "GET" && url.pathname === "/api/url") {
       const hasSession = await isValidSession(request, env);
       if (!hasSession && !checkApiKey(request, env)) {
-        return new Response('Unauthorized', { status: 401 });
+        return new Response("Unauthorized", { status: 401 });
       }
-      const tunnelUrl = await env.URL_STORE.get('tunnel_url');
+      const tunnelUrl = await env.URL_STORE.get("tunnel_url");
       return new Response(JSON.stringify({ url: tunnelUrl }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
       });
     }
-
-    // --- API: List machines ---
-    if (request.method === 'GET' && url.pathname === '/api/machines') {
+    if (request.method === "GET" && url.pathname === "/api/machines") {
       const hasSession = await isValidSession(request, env);
       if (!hasSession && !checkApiKey(request, env)) {
-        return new Response('Unauthorized', { status: 401 });
+        return new Response("Unauthorized", { status: 401 });
       }
       const machines = await getMachines(env);
       return new Response(JSON.stringify({ machines }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
       });
     }
-
-    // --- API: Delete machine ---
-    if (request.method === 'DELETE' && url.pathname.startsWith('/api/machines/')) {
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/machines/")) {
       const hasSession = await isValidSession(request, env);
       if (!hasSession && !checkApiKey(request, env)) {
-        return new Response('Unauthorized', { status: 401 });
+        return new Response("Unauthorized", { status: 401 });
       }
-      const machineId = url.pathname.replace('/api/machines/', '');
+      const machineId = url.pathname.replace("/api/machines/", "");
       await env.URL_STORE.delete(`machine:${machineId}`);
-
       let index = [];
       try {
-        const raw = await env.URL_STORE.get('machines_index');
+        const raw = await env.URL_STORE.get("machines_index");
         if (raw) index = JSON.parse(raw);
-      } catch { }
-      index = index.filter(id => id !== machineId);
-      await env.URL_STORE.put('machines_index', JSON.stringify(index));
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
-      });
-    }
-
-    if (request.method === 'GET' && url.pathname === '/api/pin') {
-      if (!checkApiKey(request, env)) {
-        return new Response('Forbidden', { status: 403 });
+      } catch {
       }
-      const pinHash = await env.URL_STORE.get('pin_hash');
-      return new Response(JSON.stringify({ pin_hash: pinHash }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+      index = index.filter((id) => id !== machineId);
+      await env.URL_STORE.put("machines_index", JSON.stringify(index));
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
       });
     }
-
-    // --- API: Set PIN ---
-    if (request.method === 'POST' && url.pathname === '/api/pin') {
+    if (request.method === "GET" && url.pathname === "/api/pin") {
+      if (!checkApiKey(request, env)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const pinHash = await env.URL_STORE.get("pin_hash");
+      return new Response(JSON.stringify({ pin_hash: pinHash }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/api/pin") {
       const hasSession = await isValidSession(request, env);
       if (!hasSession && !checkApiKey(request, env)) {
-        return new Response('Unauthorized', { status: 401 });
+        return new Response("Unauthorized", { status: 401 });
       }
       const body = await request.json();
       if (!body.pin || body.pin.length < 4 || body.pin.length > 8) {
-        return new Response('PIN must be 4-8 digits', { status: 400 });
+        return new Response("PIN must be 4-8 digits", { status: 400 });
       }
       const encoder = new TextEncoder();
       const data = encoder.encode(String(body.pin));
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-      await env.URL_STORE.put('pin_hash', hashHex);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      await env.URL_STORE.put("pin_hash", hashHex);
       return new Response(JSON.stringify({ success: true }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() }
+        headers: { "Content-Type": "application/json", ...corsHeaders() }
       });
     }
-
-    // --- Auth: Login page ---
-    if (url.pathname === '/login' && request.method === 'GET') {
+    if (url.pathname === "/login" && request.method === "GET") {
       return loginPage();
     }
-
-    // --- Auth: Login POST ---
-    if (url.pathname === '/login' && request.method === 'POST') {
+    if (url.pathname === "/login" && request.method === "POST") {
       const formData = await request.formData();
-      const username = formData.get('username');
-      const password = formData.get('password');
+      const username = formData.get("username");
+      const password = formData.get("password");
       if (username === env.AUTH_USERNAME && password === env.AUTH_PASSWORD) {
         const token = await createSessionToken(env);
         return new Response(null, {
           status: 302,
           headers: {
-            'Location': '/',
-            'Set-Cookie': `session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400`
+            "Location": "/",
+            "Set-Cookie": `session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400`
           }
         });
       }
-      return loginPage('Invalid credentials');
+      return loginPage("Invalid credentials");
     }
-
-    // --- Auth: Logout ---
-    if (url.pathname === '/logout') {
+    if (url.pathname === "/logout") {
       return new Response(null, {
         status: 302,
         headers: {
-          'Location': '/login',
-          'Set-Cookie': 'session=; Path=/; Max-Age=0'
+          "Location": "/login",
+          "Set-Cookie": "session=; Path=/; Max-Age=0"
         }
       });
     }
-
-    // --- Dashboard ---
-    if (url.pathname === '/' && request.method === 'GET') {
+    if (url.pathname === "/" && request.method === "GET") {
       const hasSession = await isValidSession(request, env);
       if (!hasSession) {
-        return Response.redirect(url.origin + '/login', 302);
+        return Response.redirect(url.origin + "/login", 302);
       }
       const machines = await getMachines(env);
       return dashboardPage(machines);
     }
-
-    return new Response('Not Found', { status: 404 });
+    return new Response("Not Found", { status: 404 });
   }
 };
+export {
+  index_default as default
+};
+//# sourceMappingURL=index.js.map
