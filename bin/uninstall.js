@@ -2,7 +2,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
-const { VBS_PATH } = require('./startup-repair');
+
+// Resolve startup-repair relative to this file so it works whether called
+// as `node bin/uninstall.js` (from package root) or via the CLI command.
+const { VBS_PATH } = require(path.join(__dirname, 'startup-repair'));
 
 const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
 const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
@@ -93,4 +96,11 @@ function main() {
   console.log('========================================\n');
 }
 
-main();
+// Run automatically when invoked directly (e.g. `node bin/uninstall.js`
+// or the npm preuninstall hook). When required from cli.js the caller
+// controls execution, so we export main as well.
+if (require.main === module) {
+  main();
+}
+
+module.exports = { main };

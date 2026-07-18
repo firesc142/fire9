@@ -211,6 +211,19 @@ program
   });
 
 program
+  .command('uninstall')
+  .description('Stop the service, remove auto-start, and clean up Paperfly')
+  .action(() => {
+    try {
+      const { main } = require(path.join(__dirname, 'uninstall.js'));
+      main();
+    } catch (e) {
+      console.error('Uninstall failed:', e.message);
+      process.exit(1);
+    }
+  });
+
+program
   .command('tray')
   .description('Start Paperfly with a system tray icon')
   .action(() => {
