@@ -208,68 +208,12 @@ async function notifyOffline() {
   }
 }
 
-// --- Restart polling ---
-// Polls the worker every 30s for a restart command set from the dashboard.
-// On receipt, waits 30s (shows countdown in logs) then restarts the process.
-
-let restartPollTimer = null;
-let restartCountdownTimer = null;
-
-function startRestartPolling() {
-  if (restartPollTimer) return;
-  restartPollTimer = setInterval(checkForRestart, 30000);
-}
-
-function stopRestartPolling() {
-  if (restartPollTimer) { clearInterval(restartPollTimer); restartPollTimer = null; }
-  if (restartCountdownTimer) { clearTimeout(restartCountdownTimer); restartCountdownTimer = null; }
-}
-
-async function checkForRestart() {
-  const config = getConfig();
-  const workerUrl = config.urlWorker?.endpoint;
-  const apiKey = config.urlWorker?.apiKey;
-  const machineId = config.machineId;
-  if (!workerUrl || !apiKey || !machineId) return;
-
-  try {
-    const baseUrl = workerUrl.replace(/\/api\/url$/, '');
-    const res = await fetch(`${baseUrl}/api/restart?machineId=${encodeURIComponent(machineId)}`, {
-      headers: { 'X-API-Key': apiKey }
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data.restart === true) {
-      log(CATEGORIES.SERVER, 'Remote restart command received — restarting in 30s...', LEVELS.INFO);
-      let countdown = 30;
-      const tick = () => {
-        log(CATEGORIES.SERVER, `Restarting in ${countdown}s...`, LEVELS.INFO);
-        countdown--;
-        if (countdown <= 0) {
-          log(CATEGORIES.SERVER, 'Restarting now.', LEVELS.INFO);
-          // Give the log a moment to flush then exit — tray.js will restart the server
-          setTimeout(() => process.exit(0), 500);
-        } else {
-          restartCountdownTimer = setTimeout(tick, 1000);
-        }
-      };
-      restartCountdownTimer = setTimeout(tick, 1000);
-    }
-  } catch {
-    // ignore network errors during poll
-  }
-}
-
-
-
 async function startTunnel(port) {
   tunnelPort = port;
   stopped = false;
   reconnectAttempts = 0;
 
   updateConfig({ tunnel: { url: null } });
-
-  startRestartPolling(); // begin polling for remote restart commands
 
   try {
     await ensureBinary();
@@ -390,7 +334,6 @@ function scheduleReconnect() {
 
 async function stopTunnel() {
   stopped = true;
-  stopRestartPolling();
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   await notifyOffline();
   killTunnelProcess();
