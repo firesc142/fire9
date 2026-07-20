@@ -75,23 +75,24 @@ let captureOffsetX = 0;
 let captureOffsetY = 0;
 let initialized = false;
 
-function initCapture(width, height, offsetX, offsetY) {
+function initCapture(width, height, offsetX, offsetY, dpiScale) {
   if (!GetDC || !CreateCompatibleDC || !CreateCompatibleBitmap || !SelectObject) {
     console.warn('[capture-gdi] Cannot initialize capture: native GDI functions are not loaded.');
     return;
   }
   releaseCapture();
 
-  captureWidth = width;
-  captureHeight = height;
-  captureOffsetX = offsetX || 0;
-  captureOffsetY = offsetY || 0;
+  const scale = dpiScale || 1;
+  captureWidth = Math.round(width * scale);
+  captureHeight = Math.round(height * scale);
+  captureOffsetX = Math.round((offsetX || 0) * scale);
+  captureOffsetY = Math.round((offsetY || 0) * scale);
 
   desktopDC = GetDC(0);
   memDC = CreateCompatibleDC(desktopDC);
-  bitmap = CreateCompatibleBitmap(desktopDC, width, height);
+  bitmap = CreateCompatibleBitmap(desktopDC, captureWidth, captureHeight);
   oldBitmap = SelectObject(memDC, bitmap);
-  pixelBuffer = Buffer.alloc(width * height * 4);
+  pixelBuffer = Buffer.alloc(captureWidth * captureHeight * 4);
   initialized = true;
 }
 
@@ -102,7 +103,7 @@ function captureFrame() {
   }
   if (!initialized) {
     const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-    initCapture(bounds.width, bounds.height, bounds.x, bounds.y);
+    initCapture(bounds.width, bounds.height, bounds.x, bounds.y, bounds.dpiScale);
   }
   if (!initialized) return null;
 
@@ -131,9 +132,12 @@ function captureFrame() {
 
 function reinitForMonitor(monitorId) {
   const bounds = monitors.getMonitorBounds(monitorId);
-  if (bounds.width !== captureWidth || bounds.height !== captureHeight ||
+  const scale = bounds.dpiScale || 1;
+  const physW = Math.round(bounds.width * scale);
+  const physH = Math.round(bounds.height * scale);
+  if (physW !== captureWidth || physH !== captureHeight ||
       bounds.x !== captureOffsetX || bounds.y !== captureOffsetY) {
-    initCapture(bounds.width, bounds.height, bounds.x, bounds.y);
+    initCapture(bounds.width, bounds.height, bounds.x, bounds.y, bounds.dpiScale);
     return true;
   }
   return false;

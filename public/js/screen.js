@@ -43,15 +43,19 @@
     const style = window.getComputedStyle(canvas);
     const borderLeft = parseFloat(style.borderLeftWidth) || 0;
     const borderTop = parseFloat(style.borderTopWidth) || 0;
+    const borderRight = parseFloat(style.borderRightWidth) || 0;
+    const borderBottom = parseFloat(style.borderBottomWidth) || 0;
     const paddingLeft = parseFloat(style.paddingLeft) || 0;
     const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
 
     const srcW = canvas.width || screenWidth;
     const srcH = canvas.height || screenHeight;
     if (!srcW || !srcH) return null;
 
-    const dispW = rect.width - borderLeft - paddingLeft;
-    const dispH = rect.height - borderTop - paddingTop;
+    const dispW = rect.width - borderLeft - borderRight - paddingLeft - paddingRight;
+    const dispH = rect.height - borderTop - borderBottom - paddingTop - paddingBottom;
 
     const srcAspect = srcW / srcH;
     const dispAspect = dispW / dispH;

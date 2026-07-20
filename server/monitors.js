@@ -13,6 +13,7 @@ async function refreshMonitors() {
       height: d.height || 1080,
       x: d.left || 0,
       y: d.top || 0,
+      dpiScale: d.dpiScale || 1,
       primary: d.primary || i === 0,
     }));
     if (monitorList.length > 0 && activeMonitor === null) {
@@ -56,9 +57,9 @@ function setActiveMonitor(id) {
 function getMonitorBounds(id) {
   const monitor = monitorList.find(m => m.id === id);
   if (monitor) {
-    return { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height };
+    return { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height, dpiScale: monitor.dpiScale };
   }
-  return { x: 0, y: 0, width: 1920, height: 1080 };
+  return { x: 0, y: 0, width: 1920, height: 1080, dpiScale: 1 };
 }
 
 function handleConnection(socket) {

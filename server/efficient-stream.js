@@ -67,8 +67,10 @@ function start(socket, options = {}) {
   const bounds = monitors.getMonitorBounds(monitorId);
 
   useNative = captureNs.isAvailable() && !!sharp;
-  capture().initCapture(bounds.width, bounds.height, bounds.x, bounds.y);
-  state = tileDiff.init(bounds.width, bounds.height);
+  capture().initCapture(bounds.width, bounds.height, bounds.x, bounds.y, bounds.dpiScale);
+  const physW = capture().getWidth();
+  const physH = capture().getHeight();
+  state = tileDiff.init(physW, physH);
   frameSeq = 0;
   lastKeyframe = 0;
   lastMonitorId = monitorId;
@@ -123,7 +125,9 @@ function setMonitor(socket, monitorId) {
   const bounds = monitors.getMonitorBounds(monitorId);
   const changed = capture().reinitForMonitor(useNative ? bounds : monitorId);
   if (changed) {
-    state = tileDiff.init(bounds.width, bounds.height);
+    const physW = capture().getWidth();
+    const physH = capture().getHeight();
+    state = tileDiff.init(physW, physH);
     sendKeyframe(socket);
   }
 }
