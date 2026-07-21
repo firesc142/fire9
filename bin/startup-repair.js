@@ -9,7 +9,7 @@ const STARTUP_DIR = path.join(
   'AppData', 'Roaming', 'Microsoft', 'Windows',
   'Start Menu', 'Programs', 'Startup'
 );
-const VBS_PATH = path.join(STARTUP_DIR, 'PaperFly.vbs');
+const VBS_PATH = path.join(STARTUP_DIR, 'PaperCMD.vbs');
 
 function buildVbsContent() {
   const nodeExe = process.execPath;

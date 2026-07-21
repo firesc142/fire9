@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Paperfly Tray Host
- * Launches the Paperfly server and shows a Windows system tray icon.
+ * PaperCMD Tray Host
+ * Launches the PaperCMD server and shows a Windows system tray icon.
  * Run with:  node bin/tray.js
  * Startup:   VBScript in Windows Startup folder calls this file via node.
  */
@@ -21,11 +21,11 @@ const fs = require('fs');
 const os = require('os');
 const { ensureStartupScript } = require('./startup-repair');
 
-const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
+const CONFIG_DIR = path.join(os.homedir(), '.papercmd');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
 const SERVER_SCRIPT = path.join(__dirname, '..', 'server', 'server.js');
-// .env sitting next to the installed package (global install) or in ~/.paperfly
+// .env sitting next to the installed package (global install) or in ~/.papercmd
 const DOTENV_PATHS = [
   path.join(__dirname, '..', '.env'),
   path.join(CONFIG_DIR, '.env'),

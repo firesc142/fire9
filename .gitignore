@@ -1,5 +1,5 @@
 node_modules/
-.paperfly/
+.papercmd/
 *.md
 *readme*
 *README*

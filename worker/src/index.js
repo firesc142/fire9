@@ -59,7 +59,7 @@ function loginPage(error = '') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Paperfly - Login</title>
+  <title>PaperCMD - Login</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap');
     :root {
@@ -88,7 +88,7 @@ function loginPage(error = '') {
   <div class="card">
     <div class="card-header">
       <div class="header-bar"></div>
-      <div><div class="title">Paperfly</div><div class="subtitle">Remote Desktop Control Panel</div></div>
+      <div><div class="title">PaperCMD</div><div class="subtitle">Remote Desktop Control Panel</div></div>
     </div>
     <form class="form-group" method="POST" action="/login">
       ${error ? '<div class="error">' + error + '</div>' : ''}
@@ -104,7 +104,7 @@ function loginPage(error = '') {
 
 function dashboardPage(machines) {
   const machineRows = machines.length === 0
-    ? '<p class="empty">No machines registered yet. Install Paperfly on a PC to get started.</p>'
+    ? '<p class="empty">No machines registered yet. Install PaperCMD on a PC to get started.</p>'
     : machines.map(m => {
       const statusClass = m.status === 'connecting' ? 'connecting' : (m.online ? 'online' : 'offline');
       const statusLabel = m.status === 'connecting' ? 'CONNECTING' : (m.online ? 'ONLINE' : 'OFFLINE');
@@ -126,7 +126,7 @@ function dashboardPage(machines) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Paperfly Dashboard</title>
+  <title>PaperCMD Dashboard</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap');
     :root {
@@ -186,7 +186,7 @@ function dashboardPage(machines) {
   <div class="container">
     <div class="header">
       <div class="header-bar"></div>
-      <div><div class="header-title">Paperfly</div><div class="header-sub">Multi-PC Remote Desktop Dashboard</div></div>
+      <div><div class="header-title">PaperCMD</div><div class="header-sub">Multi-PC Remote Desktop Dashboard</div></div>
       <div class="nav"><a href="/logout">LOGOUT</a></div>
     </div>
 
@@ -247,7 +247,7 @@ function dashboardPage(machines) {
       var onlineCount = machines.filter(function(m) { return m.online; }).length;
       count.textContent = onlineCount + '/' + machines.length + ' online';
       if (machines.length === 0) {
-        list.innerHTML = '<p class="empty">No machines registered yet. Install Paperfly on a PC to get started.</p>';
+        list.innerHTML = '<p class="empty">No machines registered yet. Install PaperCMD on a PC to get started.</p>';
         return;
       }
       list.innerHTML = machines.map(function(m) {

@@ -1,10 +1,10 @@
 {
-  "name": "paperfly",
+  "name": "papercmd",
   "version": "1.0.0",
-  "description": "Paperfly",
+  "description": "PaperCMD",
   "main": "server/server.js",
   "bin": {
-    "paperfly": "./bin/cli.js"
+    "papercmd": "./bin/cli.js"
   },
   "scripts": {
     "prepare": "node -e \"\"",
@@ -19,7 +19,7 @@
     "win32"
   ],
   "keywords": [
-    "paperfly",
+    "papercmd",
     "remote-desktop",
     "screen-share",
     "remote-control"

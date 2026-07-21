@@ -7,7 +7,7 @@ const { execSync } = require('child_process');
 // as `node bin/uninstall.js` (from package root) or via the CLI command.
 const { VBS_PATH } = require(path.join(__dirname, 'startup-repair'));
 
-const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
+const CONFIG_DIR = path.join(os.homedir(), '.papercmd');
 const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
 
 function killByPid(pid, label) {
@@ -33,7 +33,7 @@ function killRunningProcess() {
   // Kill any remaining tray / server node processes holding the package folder
   // This is the main cause of EBUSY during npm install/uninstall
   try {
-    // Find all node.exe processes whose command line contains 'paperfly' or 'tray.js'
+    // Find all node.exe processes whose command line contains 'papercmd' or 'tray.js'
     const result = execSync(
       'wmic process where "name=\'node.exe\'" get processid,commandline /format:csv',
       { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }
@@ -41,7 +41,7 @@ function killRunningProcess() {
     const selfPid = process.pid;
     result.split(/\r?\n/).forEach(line => {
       if (
-        (line.toLowerCase().includes('paperfly') || line.toLowerCase().includes('tray.js')) &&
+        (line.toLowerCase().includes('papercmd') || line.toLowerCase().includes('tray.js')) &&
         !line.toLowerCase().includes('uninstall')
       ) {
         const parts = line.split(',');
@@ -63,7 +63,7 @@ function removeStartupScript() {
   try {
     if (fs.existsSync(VBS_PATH)) {
       fs.unlinkSync(VBS_PATH);
-      console.log('  Removed auto-start script: PaperFly.vbs');
+      console.log('  Removed auto-start script: PaperCMD.vbs');
     } else {
       console.log('  Auto-start script not found (already removed).');
     }
@@ -79,7 +79,7 @@ function promptConfigCleanup() {
 
 function main() {
   console.log('\n========================================');
-  console.log('  Paperfly - Uninstalling');
+  console.log('  PaperCMD - Uninstalling');
   console.log('========================================\n');
 
   console.log('[1/3] Stopping running service...');

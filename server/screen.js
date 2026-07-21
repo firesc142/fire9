@@ -249,8 +249,9 @@ function handleConnection(socket) {
     try {
       if (!SetCursorPos) return;
       const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-      const x = Math.round(data.x * bounds.width) + (bounds.x || 0);
-      const y = Math.round(data.y * bounds.height) + (bounds.y || 0);
+      const scale = bounds.dpiScale || 1;
+      const x = Math.round(data.x * bounds.width * scale) + Math.round((bounds.x || 0) * scale);
+      const y = Math.round(data.y * bounds.height * scale) + Math.round((bounds.y || 0) * scale);
       SetCursorPos(x, y);
     } catch (err) {
       console.error('Mouse move error:', err.message);
@@ -263,8 +264,9 @@ function handleConnection(socket) {
       const point = { x: 0, y: 0 };
       GetCursorPos(point);
       const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-      const dx = Math.round(data.deltaX * bounds.width);
-      const dy = Math.round(data.deltaY * bounds.height);
+      const scale = bounds.dpiScale || 1;
+      const dx = Math.round(data.deltaX * bounds.width * scale);
+      const dy = Math.round(data.deltaY * bounds.height * scale);
       SetCursorPos(point.x + dx, point.y + dy);
     } catch (err) {
       console.error('Mouse move relative error:', err.message);
@@ -275,8 +277,9 @@ function handleConnection(socket) {
   socket.on('mouse-down', (data) => {
     try {
       const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-      const x = Math.round(data.x * bounds.width) + (bounds.x || 0);
-      const y = Math.round(data.y * bounds.height) + (bounds.y || 0);
+      const scale = bounds.dpiScale || 1;
+      const x = Math.round(data.x * bounds.width * scale) + Math.round((bounds.x || 0) * scale);
+      const y = Math.round(data.y * bounds.height * scale) + Math.round((bounds.y || 0) * scale);
       SetCursorPos(x, y);
       sendMouseClick(data.button || 'left', true);
     } catch (err) {
@@ -287,8 +290,9 @@ function handleConnection(socket) {
   socket.on('mouse-up', (data) => {
     try {
       const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-      const x = Math.round(data.x * bounds.width) + (bounds.x || 0);
-      const y = Math.round(data.y * bounds.height) + (bounds.y || 0);
+      const scale = bounds.dpiScale || 1;
+      const x = Math.round(data.x * bounds.width * scale) + Math.round((bounds.x || 0) * scale);
+      const y = Math.round(data.y * bounds.height * scale) + Math.round((bounds.y || 0) * scale);
       SetCursorPos(x, y);
       sendMouseClick(data.button || 'left', false);
     } catch (err) {
@@ -300,8 +304,9 @@ function handleConnection(socket) {
     try {
       if (data.x !== undefined && data.y !== undefined) {
         const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
-        const x = Math.round(data.x * bounds.width) + (bounds.x || 0);
-        const y = Math.round(data.y * bounds.height) + (bounds.y || 0);
+        const scale = bounds.dpiScale || 1;
+        const x = Math.round(data.x * bounds.width * scale) + Math.round((bounds.x || 0) * scale);
+        const y = Math.round(data.y * bounds.height * scale) + Math.round((bounds.y || 0) * scale);
         SetCursorPos(x, y);
       }
       const button = data.button || 'left';
@@ -333,6 +338,7 @@ function handleConnection(socket) {
     // Continuous cursor movement during the drag is handled by 'mouse-move'.
     try {
       const bounds = monitors.getMonitorBounds(monitors.getActiveMonitor());
+      const scale = bounds.dpiScale || 1;
 
       // §7 Jump validation — ignore teleports larger than 80% of the desktop
       // (indicates a corrupted or out-of-order event)
@@ -344,10 +350,10 @@ function handleConnection(socket) {
         return;
       }
 
-      const startX = Math.round((data.startX || 0) * bounds.width) + (bounds.x || 0);
-      const startY = Math.round((data.startY || 0) * bounds.height) + (bounds.y || 0);
-      const endX = Math.round((data.endX || 0) * bounds.width) + (bounds.x || 0);
-      const endY = Math.round((data.endY || 0) * bounds.height) + (bounds.y || 0);
+      const startX = Math.round((data.startX || 0) * bounds.width * scale) + Math.round((bounds.x || 0) * scale);
+      const startY = Math.round((data.startY || 0) * bounds.height * scale) + Math.round((bounds.y || 0) * scale);
+      const endX = Math.round((data.endX || 0) * bounds.width * scale) + Math.round((bounds.x || 0) * scale);
+      const endY = Math.round((data.endY || 0) * bounds.height * scale) + Math.round((bounds.y || 0) * scale);
 
       SetCursorPos(startX, startY);
       sendMouseClick('left', true);

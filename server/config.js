@@ -4,21 +4,21 @@ const os = require('os');
 const crypto = require('crypto');
 
 
-const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
+const CONFIG_DIR = path.join(os.homedir(), '.papercmd');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 const DEFAULT_CONFIG = {
   machineId: null,
   machineName: os.hostname(),
   pin_hash: 'e5ae86cc55fd690333095a4b02a4da5c1900ac0f768fdf308149127648174d50',
-  port: 3000,
+  port: 6563,
   session_secret: crypto.randomUUID(),
   tunnel: {
     subdomain: null,
     url: null
   },
   urlWorker: {
-    endpoint: "https://paperfly-url.bluetalefox.workers.dev/api/url",
+    endpoint: "https://papercmd-url.bluetalefox.workers.dev/api/url",
     apiKey: "9f5f9c9f0b1a4b7ea8c3e1d7f6a2b9c4d8e7f1a3c5b6d9e0f2a4c6b8d1e3f5a"
   }
 };

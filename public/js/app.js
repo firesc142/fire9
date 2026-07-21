@@ -116,7 +116,7 @@ async function fetchAndShowTunnelUrl() {
       el.title = 'Remote access URL — click to open';
     } else {
       el.innerHTML = '<i class="fas fa-link"></i> <span class="tunnel-no-url">No tunnel URL yet</span>';
-      el.title = 'Start the Paperfly service to get a tunnel URL';
+      el.title = 'Start the PaperCMD service to get a tunnel URL';
     }
   } catch (e) {
     // silently ignore if endpoint not available

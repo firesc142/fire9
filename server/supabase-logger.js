@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Local logger for Paperfly.
+ * Local logger for PaperCMD.
  * Keeps an in-memory buffer of the last 100 log entries served by the
  * local REST API (/api/v1/dashboard/logs).  No external database writes.
  */

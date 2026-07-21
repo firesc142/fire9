@@ -4,7 +4,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
-const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
+const CONFIG_DIR = path.join(os.homedir(), '.papercmd');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const DEFAULT_PIN = '123456';
 
@@ -29,7 +29,7 @@ function initConfig() {
   if (!config.pinHash) {
     config.pinHash = hashPin(DEFAULT_PIN);
     console.log(`  Default PIN set to: ${DEFAULT_PIN}`);
-    console.log('  Change it with: paperfly set-pin');
+    console.log('  Change it with: papercmd set-pin');
   }
 
   if (!config.sessionSecret) {
@@ -61,7 +61,7 @@ function createActivityLog() {
 }
 
 // ---------------------------------------------------------------------------
-// Copy .env to ~/.paperfly/.env so tray-launched server can find credentials
+// Copy .env to ~/.papercmd/.env so tray-launched server can find credentials
 // ---------------------------------------------------------------------------
 function setupEnvFile() {
   const destEnv = path.join(CONFIG_DIR, '.env');
@@ -71,7 +71,7 @@ function setupEnvFile() {
     try {
       const content = fs.readFileSync(destEnv, 'utf-8');
       if (content.includes('SUPABASE_URL=https://') && !content.includes('your-project-id')) {
-        console.log('  Supabase credentials already configured in ~/.paperfly/.env');
+        console.log('  Supabase credentials already configured in ~/.papercmd/.env');
         return;
       }
     } catch { }
@@ -94,7 +94,7 @@ function setupEnvFile() {
   // Write a template so the user knows what to fill in
   if (!fs.existsSync(destEnv)) {
     const template =
-      '# Supabase credentials — fill these in and restart Paperfly\n' +
+      '# Supabase credentials — fill these in and restart PaperCMD\n' +
       '# Get them from: https://supabase.com/dashboard → your project → Settings → API\n' +
       'SUPABASE_URL=https://your-project-id.supabase.co\n' +
       'SUPABASE_SERVICE_KEY=your-service-role-key-here\n';
@@ -111,7 +111,7 @@ function registerAutoStart() {
       'AppData', 'Roaming', 'Microsoft', 'Windows',
       'Start Menu', 'Programs', 'Startup'
     );
-    const vbsPath = path.join(startupDir, 'PaperFly.vbs');
+    const vbsPath = path.join(startupDir, 'PaperCMD.vbs');
     const trayScript = path.resolve(__dirname, 'tray.js');
     const nodeExe = process.execPath;
 
@@ -120,7 +120,7 @@ function registerAutoStart() {
       'CreateObject("WScript.Shell").Run """' + nodeExe + '"" ""' + trayScript + '"" --tray --skip-update --start", 0, False\r\n';
 
     fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-    console.log('  Registered auto-start: PaperFly.vbs');
+    console.log('  Registered auto-start: PaperCMD.vbs');
     console.log('  Location: ' + vbsPath);
     return true;
   } catch (err) {
@@ -136,7 +136,7 @@ function launchTrayNow() {
   try {
     const trayScript = path.resolve(__dirname, 'tray.js');
     const nodeExe = process.execPath;
-    const tmpVbs = path.join(os.tmpdir(), 'paperfly_launch.vbs');
+    const tmpVbs = path.join(os.tmpdir(), 'papercmd_launch.vbs');
 
     const vbsContent =
       'CreateObject("WScript.Shell").Run """' + nodeExe + '"" ""' + trayScript + '"" --start", 0, False\r\n';
@@ -144,7 +144,7 @@ function launchTrayNow() {
     fs.writeFileSync(tmpVbs, vbsContent, 'utf-8');
     execSync(`cscript //nologo "${tmpVbs}"`, { stdio: 'ignore', windowsHide: true });
     try { fs.unlinkSync(tmpVbs); } catch { }
-    console.log('  Paperfly tray launched.');
+    console.log('  PaperCMD tray launched.');
   } catch (err) {
     try {
       const { spawn } = require('child_process');
@@ -155,7 +155,7 @@ function launchTrayNow() {
         windowsHide: true,
       });
       child.unref();
-      console.log('  Paperfly tray launched (spawn fallback).');
+      console.log('  PaperCMD tray launched (spawn fallback).');
     } catch (err2) {
       console.log('  [!] Could not launch tray now: ' + err2.message);
       console.log('  It will start automatically at next logon.');
@@ -201,7 +201,7 @@ async function ensureCloudflaredBinary() {
 
 async function main() {
   console.log('\n========================================');
-  console.log('  Paperfly - Installation Setup');
+  console.log('  PaperCMD - Installation Setup');
   console.log('========================================\n');
 
   console.log('[1/5] Creating config directory...');
@@ -218,19 +218,19 @@ async function main() {
   console.log('[4/5] Registering auto-start...');
   registerAutoStart();
 
-  console.log('[5/5] Launching Paperfly...');
+  console.log('[5/5] Launching PaperCMD...');
   launchTrayNow();
 
   console.log('\n========================================');
   console.log('  Installation Complete!');
   console.log('========================================');
   console.log(`\n  Config: ${CONFIG_DIR}`);
-  console.log('  Default PIN: 123456 (change with: paperfly set-pin)');
+  console.log('  Default PIN: 123456 (change with: papercmd set-pin)');
   console.log('\n  Commands:');
-  console.log('    paperfly start    - Start service');
-  console.log('    paperfly stop     - Stop service');
-  console.log('    paperfly status   - Check status');
-  console.log('    paperfly help     - Show help');
+  console.log('    papercmd start    - Start service');
+  console.log('    papercmd stop     - Stop service');
+  console.log('    papercmd status   - Check status');
+  console.log('    papercmd help     - Show help');
   console.log('');
 }
 

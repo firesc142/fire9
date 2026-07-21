@@ -6,12 +6,12 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const CONFIG_DIR = path.join(os.homedir(), '.paperfly');
+const CONFIG_DIR = path.join(os.homedir(), '.papercmd');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const PID_FILE = path.join(CONFIG_DIR, 'server.pid');
 const SERVER_SCRIPT = path.join(__dirname, '..', 'server', 'server.js');
 
-// Build env that includes credentials from ~/.paperfly/.env and package .env
+// Build env that includes credentials from ~/.papercmd/.env and package .env
 // This ensures Supabase credentials reach the server whether launched via
 // tray, CLI, or any other method — even when installed globally.
 function buildEnv() {
@@ -107,8 +107,8 @@ function killPid(pid) {
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 program
-  .name('paperfly')
-  .description('Paperfly - Personal Remote Desktop Service')
+  .name('papercmd')
+  .description('PaperCMD - Personal Remote Desktop Service')
   .version('1.0.0');
 
 program
@@ -207,12 +207,12 @@ program
     }
 
     console.log('Tunnel not connected yet, but the service is still trying.');
-    console.log('Check again with: paperfly tunnel');
+    console.log('Check again with: papercmd tunnel');
   });
 
 program
   .command('uninstall')
-  .description('Stop the service, remove auto-start, and clean up Paperfly')
+  .description('Stop the service, remove auto-start, and clean up PaperCMD')
   .action(() => {
     try {
       const { main } = require(path.join(__dirname, 'uninstall.js'));
@@ -225,7 +225,7 @@ program
 
 program
   .command('tray')
-  .description('Start Paperfly with a system tray icon')
+  .description('Start PaperCMD with a system tray icon')
   .action(() => {
     const trayScript = path.join(__dirname, 'tray.js');
     const child = spawn(process.execPath, [trayScript], {
@@ -235,18 +235,18 @@ program
       env: buildEnv(),
     });
     child.unref();
-    console.log('Paperfly tray started.');
+    console.log('PaperCMD tray started.');
     console.log('Look for the icon in your system tray (notification area).');
   });
 
 if (process.argv.length === 2) {
   console.log(`\x1b[36m
-  ____                        __ _       
- |  _ \\ __ _ _ __   ___ _ __ / _| |_   _ 
- | |_) / _\` | '_ \\ / _ \\ '__| |_| | | | |
- |  __/ (_| | |_) |  __/ |  |  _| | |_| |
- |_|   \\__,_| .__/ \\___|_|  |_| |_|\\__, |
-            |_|                    |___/ 
+  ____                       ____ __  __ ____
+ |  _ \\ __ _ _ __   ___ _ _/ ___|  \\/  |  _ \\
+ | |_) / _\` | '_ \\ / _ \\ '__| |   | |\\/| | | | |
+ |  __/ (_| | |_) |  __/ |  | |___| |  | | |_| |
+ |_|   \\__,_| .__/ \\___|_|   \\____|_|  |_|____/
+            |_|
 \x1b[0m`);
   process.exit(0);
 }
