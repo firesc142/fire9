@@ -249,7 +249,7 @@ async function launchTunnel(port, isFirstAttempt) {
   try {
     return new Promise((resolve) => {
       let resolved = false;
-      const t = Tunnel.quick(`http://localhost:${port}`);
+      const t = Tunnel.quick(`http://localhost:${port}`, { '--metrics': 'localhost:0', '--no-autoupdate': true });
       tunnelInstance = t;
 
       t.on('url', (url) => {
